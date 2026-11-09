@@ -18,6 +18,16 @@ class RasterizedImage {
      * @throws ParseFailureException
      */
     public static function toPNG(ColorSpace $colorSpace, int $width, int $height, int $bitsPerComponent, Stream $content): Stream {
+        if (!in_array($bitsPerComponent, [1, 2, 4, 8, 16], true)) {
+            throw new ParseFailureException(sprintf('Unsupported BitsPerComponent %d', $bitsPerComponent));
+        }
+        $components = $colorSpace->getComponents();
+        $samplesPerPixel = $colorSpace->isIndexed ? 1 : $components->value;
+        $rowBytes = (int) ceil($width * $samplesPerPixel * $bitsPerComponent / 8);
+        $bytes = $content->toString();
+        if (strlen($bytes) < $rowBytes * $height) {
+            throw new ParseFailureException('Stream content is smaller than expected');
+        }
         $lookup = $colorSpace->isIndexed
             ? ($colorSpace->LUTObj?->getContent()->toString() ?? HexadecimalStringValue::fromValue($colorSpace->fallbackLUT ?? '')?->getBinaryString())
             : null;
@@ -31,82 +41,41 @@ class RasterizedImage {
         if ($image === false) {
             throw new ParseFailureException('Unable to create image');
         }
-
-        if ($bitsPerComponent === 1) {
-            $streamLength = $content->getSizeInBytes();
-            if ($streamLength < ceil($width * $height * $bitsPerComponent / 8)) {
-                throw new ParseFailureException('Stream content is smaller than expected');
-            }
-
-            $byteIndex = $bitsRemaining = 0;
-            $currentByte = null;
-            for ($y = 0; $y < $height; $y++) {
-                for ($x = 0; $x < $width; $x++) {
-                    if ($bitsRemaining === 0) {
-                        $currentByte = ord($content->read($byteIndex, 1));
-                        $bitsRemaining = 8;
-                        $byteIndex++;
-                    }
-
-                    $bitPosition = --$bitsRemaining;
-                    $bit = ($currentByte >> $bitPosition) & 1;
-                    if (($color = $bit === 0 ? imagecolorallocate($image, 0, 0, 0) : imagecolorallocate($image, 255, 255, 255)) === false) {
-                        throw new ParseFailureException('Unable to allocate color');
-                    }
-
-                    imagesetpixel($image, $x, $y, $color);
+        $maxSample = (1 << $bitsPerComponent) - 1;
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $values = [];
+                for ($component = 0; $component < $samplesPerPixel; $component++) {
+                    $bitOffset = $y * $rowBytes * 8 + ($x * $samplesPerPixel + $component) * $bitsPerComponent;
+                    $byteOffset = intdiv($bitOffset, 8);
+                    $value = $bitsPerComponent === 16
+                        ? (ord($bytes[$byteOffset]) << 8) | ord($bytes[$byteOffset + 1])
+                        : (ord($bytes[$byteOffset]) >> (8 - $bitsPerComponent - $bitOffset % 8)) & $maxSample;
+                    $values[] = $colorSpace->isIndexed ? $value : (int) round($value * 255 / $maxSample);
                 }
-
-                $endOfRowBits = $width % 8;
-                if ($endOfRowBits !== 0) {
-                    $bitsRemaining = max(0, $bitsRemaining - (8 - $endOfRowBits));
-                }
-            }
-        } elseif ($bitsPerComponent === 8) {
-            $pixelIndex = 0;
-            for ($y = 0; $y < $height; $y++) {
-                for ($x = 0; $x < $width; $x++) {
-                    if ($lookup !== null) {
-                        $indexInLUT = min(ord($content->read($pixelIndex, 1)), $colorSpace->maxIndexLUT ?? throw new ParseFailureException('Missing maximum palette index'));
-                        $lookupOffset = $indexInLUT * $colorSpace->getComponents()->value;
-                        if ($lookupOffset + $colorSpace->getComponents()->value > strlen($lookup)) {
-                            throw new ParseFailureException('Indexed color lookup table is too short');
-                        }
-
-                        $color = match ($colorSpace->getComponents()) {
-                            Components::RGB => imagecolorallocate($image, ord($lookup[$lookupOffset]), ord($lookup[$lookupOffset + 1]), ord($lookup[$lookupOffset + 2])),
-                            Components::Gray => imagecolorallocate($image, $value = ord($lookup[$lookupOffset]), $value, $value),
-                            Components::CMYK => imagecolorallocate(
-                                $image,
-                                min(255, max(0, (int) (255 * (1 - (ord($lookup[$lookupOffset]) / 255)) * (1 - (ord($lookup[$lookupOffset + 3]) / 255))))),
-                                min(255, max(0, (int) (255 * (1 - (ord($lookup[$lookupOffset + 1]) / 255)) * (1 - (ord($lookup[$lookupOffset + 3]) / 255))))),
-                                min(255, max(0, (int) (255 * (1 - (ord($lookup[$lookupOffset + 2]) / 255)) * (1 - (ord($lookup[$lookupOffset + 3]) / 255))))),
-                            ),
-                        };
-                        $pixelIndex++;
-                    } else {
-                        $color = match ($colorSpace->getComponents()) {
-                            Components::RGB => imagecolorallocate($image, ord($content->read($pixelIndex, 1)), ord($content->read($pixelIndex + 1, 1)), ord($content->read($pixelIndex + 2, 1))),
-                            Components::Gray => imagecolorallocate($image, $value = ord($content->read($pixelIndex, 1)), $value, $value),
-                            Components::CMYK => imagecolorallocate(
-                                $image,
-                                min(255, max(0, (int) (255 * (1 - (ord($content->read($pixelIndex, 1)) / 255)) * (1 - (ord($content->read($pixelIndex + 3, 1)) / 255))))),
-                                min(255, max(0, (int) (255 * (1 - (ord($content->read($pixelIndex + 1, 1)) / 255)) * (1 - (ord($content->read($pixelIndex + 3, 1)) / 255))))),
-                                min(255, max(0, (int) (255 * (1 - (ord($content->read($pixelIndex + 2, 1)) / 255)) * (1 - (ord($content->read($pixelIndex + 3, 1)) / 255))))),
-                            ),
-                        };
-                        $pixelIndex += $colorSpace->getComponents()->value;
+                if ($lookup !== null) {
+                    $index = min($values[0], $colorSpace->maxIndexLUT ?? throw new ParseFailureException('Missing maximum palette index'));
+                    $lookupOffset = $index * $components->value;
+                    if ($lookupOffset + $components->value > strlen($lookup)) {
+                        throw new ParseFailureException('Indexed color lookup table is too short');
                     }
-
-                    if ($color === false) {
-                        throw new ParseFailureException('Unable to allocate color');
+                    $values = [];
+                    for ($component = 0; $component < $components->value; $component++) {
+                        $values[] = ord($lookup[$lookupOffset + $component]);
                     }
-
-                    imagesetpixel($image, $x, $y, $color);
                 }
+                [$r, $g, $b] = match ($components) {
+                    Components::Gray => [$values[0], $values[0], $values[0]],
+                    Components::RGB => [$values[0], $values[1], $values[2]],
+                    Components::CMYK => [
+                        (int) (255 * (1 - $values[0] / 255) * (1 - $values[3] / 255)),
+                        (int) (255 * (1 - $values[1] / 255) * (1 - $values[3] / 255)),
+                        (int) (255 * (1 - $values[2] / 255) * (1 - $values[3] / 255)),
+                    ],
+                };
+                $color = ($r << 16) | ($g << 8) | $b;
+                imagesetpixel($image, $x, $y, $color);
             }
-        } else {
-            throw new ParseFailureException(sprintf('Unsupported BitsPerComponent %d', $bitsPerComponent));
         }
 
         ob_start();
@@ -115,7 +84,6 @@ class RasterizedImage {
         if ($imageContent === false) {
             throw new ParseFailureException('Unable to decode image');
         }
-
         return new InMemoryStream($imageContent);
     }
 }
