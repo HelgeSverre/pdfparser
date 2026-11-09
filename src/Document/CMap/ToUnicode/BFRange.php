@@ -11,6 +11,7 @@ readonly class BFRange {
         public int $sourceCodeStart,
         public int $sourceCodeEnd,
         public array $destinationCodePoints,
+        public ?int $byteSize = null,
     ) {}
 
     public function containsCharacterCode(int $characterCode): bool {

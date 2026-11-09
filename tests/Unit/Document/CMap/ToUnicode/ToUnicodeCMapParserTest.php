@@ -45,11 +45,11 @@ class ToUnicodeCMapParserTest extends TestCase {
         );
         static::assertEquals(
             new ToUnicodeCMap(
-                [new CodeSpaceRange(0x0000, 0xFFFF)],
+                [new CodeSpaceRange(0x0000, 0xFFFF, 2)],
                 2,
-                new BFRange(0x0000, 0x005E, ['0020']),
-                new BFRange(0x005F, 0x0061, ['00660066', '00660069', '00660066006C']),
-                new BFChar(0x3A51, 'D840DC3E'),
+                new BFRange(0x0000, 0x005E, ['0020'], 2),
+                new BFRange(0x005F, 0x0061, ['00660066', '00660069', '00660066006C'], 2),
+                new BFChar(0x3A51, 'D840DC3E', 2),
             ),
             ToUnicodeCMapParser::parse($stream, 0, $stream->getSizeInBytes()),
         );
@@ -68,7 +68,7 @@ class ToUnicodeCMapParserTest extends TestCase {
         );
         static::assertEquals(
             new ToUnicodeCMap(
-                [new CodeSpaceRange(0x0000, 0xBBBB), new CodeSpaceRange(0xDDDD, 0xFFFF)],
+                [new CodeSpaceRange(0x0000, 0xBBBB, 2), new CodeSpaceRange(0xDDDD, 0xFFFF, 2)],
                 2,
             ),
             ToUnicodeCMapParser::parse($stream, 0, $stream->getSizeInBytes()),
@@ -92,10 +92,10 @@ class ToUnicodeCMapParserTest extends TestCase {
         static::assertEquals(
             new ToUnicodeCMap(
                 [
-                    new CodeSpaceRange(0x0000, 0xFFFF),
+                    new CodeSpaceRange(0x0000, 0xFFFF, 2),
                 ],
                 2,
-                new BFRange(32, 251, ['0020', '0021', '0022', '0023', '0024', '0025', '0026', '2019']),
+                new BFRange(32, 251, ['0020', '0021', '0022', '0023', '0024', '0025', '0026', '2019'], 1),
             ),
             ToUnicodeCMapParser::parse($stream, 0, $stream->getSizeInBytes()),
         );
@@ -116,7 +116,7 @@ class ToUnicodeCMapParserTest extends TestCase {
         static::assertEquals(
             new ToUnicodeCMap(
                 [
-                    new CodeSpaceRange(0x0000, 0xFFFF),
+                    new CodeSpaceRange(0x0000, 0xFFFF, 2),
                 ],
                 2,
             ),
@@ -139,7 +139,7 @@ class ToUnicodeCMapParserTest extends TestCase {
         static::assertEquals(
             new ToUnicodeCMap(
                 [
-                    new CodeSpaceRange(0x0000, 0xFFFF),
+                    new CodeSpaceRange(0x0000, 0xFFFF, 2),
                 ],
                 2,
             ),
