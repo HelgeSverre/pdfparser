@@ -2,6 +2,7 @@
 
 namespace PrinsFrank\PdfParser\Document\Image;
 
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
 use PrinsFrank\PdfParser\Document\Image\ColorSpace\ColorSpace;
 use PrinsFrank\PdfParser\Document\Image\ColorSpace\Components;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
@@ -17,6 +18,15 @@ class RasterizedImage {
      * @throws ParseFailureException
      */
     public static function toPNG(ColorSpace $colorSpace, int $width, int $height, int $bitsPerComponent, Stream $content): Stream {
+        $lookup = $colorSpace->isIndexed
+            ? ($colorSpace->LUTObj?->getContent()->toString() ?? HexadecimalStringValue::fromValue($colorSpace->fallbackLUT ?? '')?->getBinaryString())
+            : null;
+        if ($colorSpace->isIndexed && $lookup === null) {
+            throw new ParseFailureException('Missing indexed color lookup table');
+        }
+        if ($colorSpace->isIndexed && ($colorSpace->maxIndexLUT === null || $colorSpace->maxIndexLUT < 0 || $colorSpace->maxIndexLUT > 255)) {
+            throw new ParseFailureException('Indexed color maximum must be between 0 and 255');
+        }
         $image = imagecreatetruecolor($width, $height);
         if ($image === false) {
             throw new ParseFailureException('Unable to create image');
@@ -56,20 +66,21 @@ class RasterizedImage {
             $pixelIndex = 0;
             for ($y = 0; $y < $height; $y++) {
                 for ($x = 0; $x < $width; $x++) {
-                    if ($colorSpace->isIndexed && $colorSpace->LUTObj !== null) {
-                        $indexInLUT = ord($content->read($pixelIndex, 1));
-                        if ($indexInLUT > $colorSpace->maxIndexLUT) {
-                            throw new ParseFailureException('Index in LUT is too large');
+                    if ($lookup !== null) {
+                        $indexInLUT = min(ord($content->read($pixelIndex, 1)), $colorSpace->maxIndexLUT ?? throw new ParseFailureException('Missing maximum palette index'));
+                        $lookupOffset = $indexInLUT * $colorSpace->getComponents()->value;
+                        if ($lookupOffset + $colorSpace->getComponents()->value > strlen($lookup)) {
+                            throw new ParseFailureException('Indexed color lookup table is too short');
                         }
 
                         $color = match ($colorSpace->getComponents()) {
-                            Components::RGB => imagecolorallocate($image, ord($colorSpace->LUTObj->getContent()->read($indexInLUT, 1)), ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 1, 1)), ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 2, 1))),
-                            Components::Gray => imagecolorallocate($image, $value = ord($colorSpace->LUTObj->getContent()->read($indexInLUT, 1)), $value, $value),
+                            Components::RGB => imagecolorallocate($image, ord($lookup[$lookupOffset]), ord($lookup[$lookupOffset + 1]), ord($lookup[$lookupOffset + 2])),
+                            Components::Gray => imagecolorallocate($image, $value = ord($lookup[$lookupOffset]), $value, $value),
                             Components::CMYK => imagecolorallocate(
                                 $image,
-                                min(255, max(0, (int) (255 * (1 - (ord($colorSpace->LUTObj->getContent()->read($indexInLUT, 1)) / 255)) * (1 - (ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 3, 1)) / 255))))),
-                                min(255, max(0, (int) (255 * (1 - (ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 1, 1)) / 255)) * (1 - (ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 3, 1)) / 255))))),
-                                min(255, max(0, (int) (255 * (1 - (ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 2, 1)) / 255)) * (1 - (ord($colorSpace->LUTObj->getContent()->read($indexInLUT + 3, 1)) / 255))))),
+                                min(255, max(0, (int) (255 * (1 - (ord($lookup[$lookupOffset]) / 255)) * (1 - (ord($lookup[$lookupOffset + 3]) / 255))))),
+                                min(255, max(0, (int) (255 * (1 - (ord($lookup[$lookupOffset + 1]) / 255)) * (1 - (ord($lookup[$lookupOffset + 3]) / 255))))),
+                                min(255, max(0, (int) (255 * (1 - (ord($lookup[$lookupOffset + 2]) / 255)) * (1 - (ord($lookup[$lookupOffset + 3]) / 255))))),
                             ),
                         };
                         $pixelIndex++;

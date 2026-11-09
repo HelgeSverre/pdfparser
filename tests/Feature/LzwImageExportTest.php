@@ -19,6 +19,8 @@ class LzwImageExportTest extends TestCase {
         yield 'RGB predictor' => [2, 1, '/BitsPerComponent 8 /ColorSpace /DeviceRGB /DecodeParms << /Predictor 15 /Columns 2 /Colors 3 /BitsPerComponent 8 >>', '010a141e050505', [0x0a141e, 0x0f1923]];
         yield 'CMYK' => [1, 1, '/BitsPerComponent 8 /ColorSpace /DeviceCMYK', '00ffff00', [0xff0000]];
         yield '1-bit row padding' => [3, 2, '/BitsPerComponent 1 /ColorSpace /DeviceGray', 'a040', [0xffffff, 0, 0xffffff, 0, 0xffffff, 0]];
+        yield 'indexed sample above hival' => [1, 1, '/BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 1 <000000ffffff>]', 'ff', [0xffffff]];
+        yield '8-bit indexed RGB' => [3, 1, '/BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 2 <fffffffefefe000000>]', '020100', [0, 0xfefefe, 0xffffff]];
     }
 
     /** @param list<int> $expectedPixels */

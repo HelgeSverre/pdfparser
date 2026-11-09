@@ -14,3 +14,5 @@ foreach ($document->getImages() as $index => $image) {
 ```
 
 Images compressed with LZWDecode or FlateDecode are exported as PNG files. Their stream filters and predictors are decoded before the pixel data is converted.
+
+Indexed images use their color lookup table when producing PNG pixels. Both a lookup stream and a hexadecimal lookup string are supported.
