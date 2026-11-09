@@ -69,6 +69,15 @@ enum TextShowingOperator: string implements InteractsWithTextState, ProducesPosi
             return new PositionedTextElement($this->parseArray($operands), $textMatrix->multiplyWith($globalTransformationMatrix), $textState);
         }
 
+        if (str_starts_with($operands, '<') && str_ends_with($operands, '>')
+            && strspn($operands, "0123456789ABCDEFabcdef\x00\x09\x0A\x0C\x0D\x20", 1) === strlen($operands) - 2) {
+            return new PositionedTextElement(
+                [new TextSegment(new HexadecimalStringValue(substr($operands, 1, -1)), null)],
+                $textMatrix->multiplyWith($globalTransformationMatrix),
+                $textState,
+            );
+        }
+
         if (($result = preg_match_all('/(?<chars>(<(\\\\>|[^>])*>)|(\((?:\\\\.|[^\\\\)])*\)))\s*(?<offset>-?[0-9]+(\.[0-9]+)?)?/', $operands, $matches, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL)) === false) {
             throw new ParseFailureException(sprintf('Error with regex'));
         } elseif ($result === 0) {
