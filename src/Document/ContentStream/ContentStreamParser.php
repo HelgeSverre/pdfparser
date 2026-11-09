@@ -22,6 +22,7 @@ use PrinsFrank\PdfParser\Document\ContentStream\Object\TextObject;
 use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
 use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Stream\InMemoryStream;
 
 /** @internal */
 class ContentStreamParser {
@@ -106,9 +107,9 @@ class ContentStreamParser {
      */
     public static function parse(array $contentsObjects): ContentStream {
         $content = [];
-        $inComment = $inStringLiteral = $inResourceName = $inDictionary = $inInlineImage = false;
-        $inArrayLevel = $inStringLevel = 0;
-        $textObject = $previousChar = $secondToLastChar = $thirdToLastChar = $previousContentStream = $startPreviousOperandIndex = $startOfCommentOffset = $endCommentOffset = null;
+        $inComment = $inResourceName = $inInlineImage = $stringEscaped = false;
+        $inArrayLevel = $inStringLevel = $literalDepth = $dictionaryDepth = 0;
+        $textObject = $previousChar = $secondToLastChar = $thirdToLastChar = $previousContentStream = $startPreviousOperandIndex = null;
         foreach ($contentsObjects as $contentsObject) {
             $startCurrentOperandIndex = 0;
             $contentStream = $contentsObject->getContent();
@@ -118,9 +119,9 @@ class ContentStreamParser {
                 $char = $rawStream[$index];
                 if ($inComment) {
                     if ($char === "\r" || $char === "\n") {
-                        $endCommentOffset = $index + 1;
                         $inComment = false;
                     }
+                    $rawStream[$index] = " ";
                     continue;
                 }
 
@@ -128,31 +129,43 @@ class ContentStreamParser {
                     if ($char === 'I' && $previousChar === 'E' && $secondToLastChar !== '\\') {
                         $inInlineImage = false;
                     }
-                } elseif ($inStringLiteral) {
-                    if ($char === ')' && ($previousChar !== '\\' || $secondToLastChar === '\\')) {
-                        $inStringLiteral = false;
+                } elseif ($literalDepth > 0) {
+                    if ($stringEscaped) {
+                        $stringEscaped = false;
+                    } elseif ($char === '\\') {
+                        $stringEscaped = true;
+                    } elseif ($char === '(') {
+                        $literalDepth++;
+                    } elseif ($char === ')') {
+                        $literalDepth--;
                     }
                 } elseif ($inResourceName) {
                     if ($previousChar !== '\\' && ($char === ' ' || $char === '<' || $char === '(' || $char === '/' || $char === "\r" || $char === "\n")) {
                         $inResourceName = false;
                     }
-                } elseif ($inDictionary) {
-                    if ($char === '>' && $previousChar === '>' && ($secondToLastChar !== '\\' || $thirdToLastChar === '\\')) {
-                        $inDictionary = false;
-                    }
                 } elseif ($char === '%') {
                     $inComment = true;
-                    $startOfCommentOffset = $index;
+                    $rawStream[$index] = " ";
                     $previousChar = $secondToLastChar = $thirdToLastChar = null;
                     continue;
+                } elseif ($dictionaryDepth > 0) {
+                    if ($char === '(') {
+                        $literalDepth = 1;
+                    } elseif ($char === '<' && ($rawStream[$index + 1] ?? '') === '<') {
+                        $dictionaryDepth++;
+                        $index++;
+                    } elseif ($char === '>' && ($rawStream[$index + 1] ?? '') === '>') {
+                        $dictionaryDepth--;
+                        $index++;
+                    }
                 } elseif ($char === '[' && ($previousChar !== '\\' || $secondToLastChar === '\\')) {
                     $inArrayLevel++;
                 } elseif ($char === '<' && $previousChar === '<' && ($secondToLastChar !== '\\' || $thirdToLastChar === '\\')) {
-                    $inDictionary = true;
+                    $dictionaryDepth = 1;
                 } elseif ($char === '<' && ($previousChar !== '\\' || $secondToLastChar === '\\') && $rawStream[$index + 1] !== '<') {
                     $inStringLevel++;
                 } elseif ($char === '(' && ($previousChar !== '\\' || $secondToLastChar === '\\')) {
-                    $inStringLiteral = true;
+                    $literalDepth = 1;
                 } elseif ($char === '/' && ($previousChar !== '\\' || $secondToLastChar === '\\')) {
                     $inResourceName = true;
                 } elseif ($inStringLevel > 0 || $inArrayLevel > 0) {
@@ -173,11 +186,9 @@ class ContentStreamParser {
                         }
                     } elseif ($char === 'D' && $previousChar === 'I' && ($secondToLastChar !== '\\' || $thirdToLastChar === '\\')) {
                         $inInlineImage = true;
-                    } elseif ($char === 'C'
-                        && (($secondToLastChar === 'B' && ($previousChar === 'M' || $previousChar === 'D')) || ($secondToLastChar === 'E' && $previousChar === 'M'))) { // MarkedContentOperator::BeginMarkedContent, MarkedContentOperator::EndMarkedContent, MarkedContentOperator::BeginMarkedContentWithProperties
-                        $startCurrentOperandIndex = $index + 1;
                     } elseif (($operator = self::getOperator($char, $previousChar, $secondToLastChar, $thirdToLastChar)) !== null
-                        && (($nextChar = $rawStream[$index + 1] ?? '') === '' || self::getOperator($nextChar, $char, $previousChar, $secondToLastChar) === null)) { // Skip the current hit if the next iteration is also a valid operator
+                        && (($nextChar = $rawStream[$index + 1] ?? '') === '' || self::getOperator($nextChar, $char, $previousChar, $secondToLastChar) === null)
+                        && !($char === 'B' && ($nextChar === 'M' || $nextChar === 'D') && ($rawStream[$index + 2] ?? '') === 'C')) { // Skip the current hit if the next iteration is also a valid operator
                         $operands = '';
                         if ($previousContentStream !== null && $startPreviousOperandIndex !== null && $startPreviousOperandIndex < $previousContentStream->getSizeInBytes()) {
                             $operands .= $previousContentStream->read($startPreviousOperandIndex, $previousContentStream->getSizeInBytes() - $startPreviousOperandIndex);
@@ -186,16 +197,7 @@ class ContentStreamParser {
                         $operatorLength = strlen($operator->value);
                         $operandLength = $index + 1 - $startCurrentOperandIndex - $operatorLength;
                         if ($operandLength > 0) {
-                            $operandEndOffset = $index + 1 - $operatorLength;
-                            if ($endCommentOffset !== null
-                                && $endCommentOffset < $operandEndOffset
-                                && $startOfCommentOffset !== null
-                                && $startOfCommentOffset > $startCurrentOperandIndex) {
-                                $operands .= substr($rawStream, $startCurrentOperandIndex, $startOfCommentOffset - $startCurrentOperandIndex);
-                                $operands .= substr($rawStream, $endCommentOffset, $operandEndOffset - $endCommentOffset);
-                            } else {
-                                $operands .= substr($rawStream, $startCurrentOperandIndex, $operandLength);
-                            }
+                            $operands .= substr($rawStream, $startCurrentOperandIndex, $operandLength);
                         }
 
                         $command = new ContentStreamCommand($operator, trim($operands));
@@ -206,7 +208,6 @@ class ContentStreamParser {
                         }
 
                         $startCurrentOperandIndex = $index + 1;
-                        $endCommentOffset = $startOfCommentOffset = null;
                     }
                 }
 
@@ -215,7 +216,7 @@ class ContentStreamParser {
                 $previousChar = $char;
             }
 
-            $previousContentStream = $contentStream;
+            $previousContentStream = new InMemoryStream($rawStream);
             $startPreviousOperandIndex = $startCurrentOperandIndex;
         }
 
