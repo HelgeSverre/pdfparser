@@ -29,12 +29,28 @@ readonly class Dictionary {
     /** @var array<DictionaryEntry> */
     public array $dictionaryEntries;
 
+    /** @var array<string, DictionaryEntry> */
+    private array $entriesByKey;
+
+    /** @var array<string, DictionaryEntry> */
+    private array $entriesByName;
+
     /** @no-named-arguments */
     public function __construct(
         public CompressedObject|UncompressedObject|null $object,
         DictionaryEntry... $dictionaryEntries,
     ) {
         $this->dictionaryEntries = $dictionaryEntries;
+        $entriesByKey = $entriesByName = [];
+        foreach ($dictionaryEntries as $entry) {
+            if ($entry->key instanceof DictionaryKey) {
+                $entriesByKey[$entry->key->value] ??= $entry;
+            } else {
+                $entriesByName[$entry->key->value] ??= $entry;
+            }
+        }
+        $this->entriesByKey = $entriesByKey;
+        $this->entriesByName = $entriesByName;
     }
 
     /**
@@ -121,20 +137,9 @@ readonly class Dictionary {
     }
 
     private function getEntryForKey(DictionaryKey|NameObjectStringValue $dictionaryKey): ?DictionaryEntry {
-        $alias = null;
-        foreach ($this->dictionaryEntries as $entry) {
-            if ($entry->key->value !== $dictionaryKey->value) {
-                continue;
-            }
-
-            if (($entry->key instanceof DictionaryKey) === ($dictionaryKey instanceof DictionaryKey)) {
-                return $entry;
-            }
-
-            $alias ??= $entry;
-        }
-
-        return $alias;
+        return $dictionaryKey instanceof DictionaryKey
+            ? ($this->entriesByKey[$dictionaryKey->value] ?? $this->entriesByName[$dictionaryKey->value] ?? null)
+            : ($this->entriesByName[$dictionaryKey->value] ?? $this->entriesByKey[$dictionaryKey->value] ?? null);
     }
 
     public function getSubDictionary(DictionaryKey $dictionaryKey): ?Dictionary {
