@@ -48,6 +48,7 @@ readonly class DictionaryArrayValue implements DocumentAwareDictionaryValue {
         $dictionaryEntries = [];
         foreach ($matches[0] as $match) {
             if ($match === 'null') {
+                $dictionaryEntries[] = new Dictionary($object);
                 continue;
             }
 
