@@ -25,6 +25,12 @@ class LzwImageExportTest extends TestCase {
         yield 'indexed RGB' => [2, 1, '/BitsPerComponent 1 /ColorSpace [/Indexed /DeviceRGB 1 <ff000000ff00>]', '40', [0xff0000, 0x00ff00]];
         yield 'indexed sample above hival' => [1, 1, '/BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 1 <000000ffffff>]', 'ff', [0xffffff]];
         yield '8-bit indexed RGB' => [3, 1, '/BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 2 <fffffffefefe000000>]', '020100', [0, 0xfefefe, 0xffffff]];
+        yield 'stencil default depth' => [2, 1, '/ImageMask true', '40', [0, 0x7f000000]];
+        yield 'stencil inverted' => [2, 1, '/ImageMask true /Decode [1 0]', '40', [0x7f000000, 0]];
+        yield 'stencil inverted decimals' => [2, 1, '/ImageMask true /Decode [1.0 0.0]', '40', [0x7f000000, 0]];
+        yield 'stencil inverted signed integers' => [2, 1, '/ImageMask true /Decode [+1 +0]', '40', [0x7f000000, 0]];
+        yield 'stencil inverted mixed numbers' => [2, 1, '/ImageMask true /Decode [+1. -0.0]', '40', [0x7f000000, 0]];
+        yield 'stencil normal decimal numbers' => [2, 1, '/ImageMask true /Decode [.0 +1.0]', '40', [0, 0x7f000000]];
     }
 
     /** @param list<int> $expectedPixels */

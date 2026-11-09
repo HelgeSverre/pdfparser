@@ -17,8 +17,8 @@ class RasterizedImage {
      * @param int<1, max> $height
      * @throws ParseFailureException
      */
-    public static function toPNG(ColorSpace $colorSpace, int $width, int $height, int $bitsPerComponent, Stream $content): Stream {
-        if (!in_array($bitsPerComponent, [1, 2, 4, 8, 16], true)) {
+    public static function toPNG(ColorSpace $colorSpace, int $width, int $height, int $bitsPerComponent, Stream $content, bool $imageMask = false, bool $invertMask = false): Stream {
+        if (!in_array($bitsPerComponent, [1, 2, 4, 8, 16], true) || ($imageMask && $bitsPerComponent !== 1)) {
             throw new ParseFailureException(sprintf('Unsupported BitsPerComponent %d', $bitsPerComponent));
         }
         $components = $colorSpace->getComponents();
@@ -40,6 +40,10 @@ class RasterizedImage {
         $image = imagecreatetruecolor($width, $height);
         if ($image === false) {
             throw new ParseFailureException('Unable to create image');
+        }
+        if ($imageMask) {
+            imagealphablending($image, false);
+            imagesavealpha($image, true);
         }
         $maxSample = (1 << $bitsPerComponent) - 1;
         for ($y = 0; $y < $height; $y++) {
@@ -73,7 +77,9 @@ class RasterizedImage {
                         (int) (255 * (1 - $values[2] / 255) * (1 - $values[3] / 255)),
                     ],
                 };
-                $color = ($r << 16) | ($g << 8) | $b;
+                $color = $imageMask
+                    ? ((($values[0] !== 0) !== $invertMask) ? 127 << 24 : 0)
+                    : ($r << 16) | ($g << 8) | $b;
                 imagesetpixel($image, $x, $y, $color);
             }
         }
