@@ -77,7 +77,7 @@ class CompressedObject implements ObjectItem {
         return $this->decoratorCache[$decoratorFQN] = new $decoratorFQN(
             $this->dictionary = DictionaryParser::parse(
                 $this,
-                $this->storedInObject->getEncryptionContext(),
+                null,
                 $content,
                 $firstNonWhitespaceCharOffset,
                 $content->getSizeInBytes() - $firstNonWhitespaceCharOffset,

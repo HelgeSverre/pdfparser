@@ -14,8 +14,10 @@ use PrinsFrank\PdfParser\PdfParser;
 class EncryptedDocumentTest extends TestCase {
     /** @return iterable<string, array{string, string}> */
     public static function encryptedDocuments(): iterable {
-        yield 'AES clear metadata' => ['aes-cleartext-metadata.pdf', 'd22ef63010d5df3e16fc300c0af43797'];
         yield '40-bit default length' => ['legacy-40.pdf', '17013de290'];
+        yield 'RC4 object stream' => ['rc4-object-stream.pdf', '3c5fa4b0cce43a0b6dfc7b7db4379c0f'];
+        yield 'AES object stream' => ['aes-object-stream.pdf', '3c5fa4b0cce43a0b6dfc7b7db4379c0f'];
+        yield 'AES clear metadata' => ['aes-cleartext-metadata.pdf', 'd22ef63010d5df3e16fc300c0af43797'];
     }
 
     #[DataProvider('encryptedDocuments')]
