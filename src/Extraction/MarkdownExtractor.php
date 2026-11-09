@@ -33,8 +33,13 @@ class MarkdownExtractor {
         $textBuffer = '';
         $previousElementIsBold = $previousElementIsItalic = false;
         $previousHeadingLevel = $previousLinkUrl = null;
-        foreach (TextGrouping::group($positionedTextElements, $page, $fontCache) as $i => $positionedTextElementsForLine) {
-            if ($i !== 0) {
+        $lineNumber = 0;
+        foreach (TextGrouping::group($positionedTextElements, $page, $fontCache) as $positionedTextElementsForLine) {
+            if (($positionedTextElementsForLine[0]->actualText ?? null) === ''
+                && array_filter($positionedTextElementsForLine, static fn(PositionedTextElement $element): bool => $element->actualText !== '') === []) {
+                continue;
+            }
+            if ($lineNumber++ !== 0) {
                 if ($previousHeadingLevel !== null) {
                     self::flushInLineNodes($inLineNodes, $textBuffer, $previousElementIsBold, $previousElementIsItalic, $previousLinkUrl);
                     self::flushBlockNodes($blockNodes, $inLineNodes, $previousHeadingLevel);
