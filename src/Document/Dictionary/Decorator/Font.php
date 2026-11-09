@@ -4,6 +4,7 @@ namespace PrinsFrank\PdfParser\Document\Dictionary\Decorator;
 
 use PrinsFrank\MarkDownDom\Enum\HeadingLevel;
 use PrinsFrank\PdfParser\Document\CMap\Registry\RegistryOrchestrator;
+use PrinsFrank\PdfParser\Document\CMap\ToUnicode\SymbolCMap;
 use PrinsFrank\PdfParser\Document\CMap\ToUnicode\ToUnicodeCMap;
 use PrinsFrank\PdfParser\Document\CMap\ToUnicode\ToUnicodeCMapParser;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextState;
@@ -107,6 +108,14 @@ readonly class Font extends DecoratedDictionary {
 
         $toUnicodeObject = $this->getObjectForReference(DictionaryKey::TO_UNICODE);
         if ($toUnicodeObject === null) {
+            if ($this->getSubType() === SubtypeNameValue::TYPE_1
+                && $this->getBaseFont() === 'Symbol'
+                && $this->getTypeForKey(DictionaryKey::ENCODING) !== NameObjectStringValue::class
+                && $this->getEncoding() === null
+                && $this->getTypeForKey(DictionaryKey::FONT_DESCRIPTOR) === null) {
+                return $this->toUnicodeCMap = new SymbolCMap();
+            }
+
             $descendantUnicodeCMap = $this->getToUnicodeCMapDescendantFont();
             if ($descendantUnicodeCMap !== null) {
                 return $this->toUnicodeCMap = $descendantUnicodeCMap;
