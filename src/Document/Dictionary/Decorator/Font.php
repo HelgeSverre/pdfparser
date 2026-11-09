@@ -38,6 +38,7 @@ readonly class Font extends DecoratedDictionary {
     private CIDFontWidths|FontWidths|Core14FontWidths|false $widths;
     private DifferencesArrayValue|false $differencesCache;
     private EncodingNameValue|false $encodingCache;
+    private float $defaultWidthCache;
 
     /** @throws PdfParserException */
     public function getBaseFont(): ?string {
@@ -159,12 +160,18 @@ readonly class Font extends DecoratedDictionary {
             return 0.0;
         }
 
+        $characterCodes = $this->getCharacterCodesForBytes($bytes);
+        if ($characterCodes === []) {
+            return 0.0;
+        }
+
         $defaultWidth = null;
         $totalCharacterWidth = 0.0;
         $charWidthCache = [];
-        foreach ($this->getCharacterCodesForBytes($bytes) as $char) {
+        $widths = $this->getWidths();
+        foreach ($characterCodes as $char) {
             if (isset($charWidthCache[$char]) === false) {
-                $characterWidth = $this->getWidths()?->getWidthForCharacter($char) ?? ($defaultWidth ??= $this->getDefaultWidth());
+                $characterWidth = $widths?->getWidthForCharacter($char) ?? ($defaultWidth ??= $this->getDefaultWidth());
 
                 // Word spacing (Tw) applies only to the single-byte character code 32, and never to composite (Type0) fonts (spec §9.3.3).
                 $wordSpaceForChar = ($char === 32 && $this->getDescendantFonts() === []) ? $wordSpace : 0.0;
@@ -209,7 +216,7 @@ readonly class Font extends DecoratedDictionary {
 
         if ($valueType === ReferenceValue::class) {
             $descendantFontsReference = $this->getValueForKey(DictionaryKey::DESCENDANT_FONTS, ReferenceValue::class) ?? throw new ParseFailureException();
-            return [
+            return $this->descendantFontsCache = [
                 ($this->dictionary->object?->document->getObject($descendantFontsReference->objectNumber) ?? throw new ParseFailureException(sprintf('Descendant font with number %d could not be found', $descendantFontsReference->objectNumber)))
                     ->getDictionary(Font::class),
             ];
@@ -240,8 +247,12 @@ readonly class Font extends DecoratedDictionary {
     }
 
     public function getDefaultWidth(): float {
+        if (isset($this->defaultWidthCache)) {
+            return $this->defaultWidthCache;
+        }
+
         if ($this->isCIDFont()) {
-            return ($this->getValueForKey(DictionaryKey::DW, IntegerValue::class)->value
+            return $this->defaultWidthCache = ($this->getValueForKey(DictionaryKey::DW, IntegerValue::class)->value
                 ?? 1000) / 1000;
         }
 
@@ -254,11 +265,11 @@ readonly class Font extends DecoratedDictionary {
             }
 
             if ($descendantFont instanceof Font) {
-                return $descendantFont->getDefaultWidth();
+                return $this->defaultWidthCache = $descendantFont->getDefaultWidth();
             }
         }
 
-        return 1.0;
+        return $this->defaultWidthCache = 1.0;
     }
 
     /** @throws PdfParserException */
