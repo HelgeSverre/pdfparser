@@ -15,11 +15,11 @@ readonly class FloatValue implements DictionaryValue {
     #[Override]
     public static function fromValue(string $valueString): ?self {
         $valueString = trim($valueString);
-        $valueAsFloat = (float) $valueString;
-        if (number_format($valueAsFloat, (int) strpos(strrev($valueString), ".")) !== $valueString) {
+        if (preg_match('/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/D', $valueString) !== 1) {
             return null;
         }
 
-        return new self($valueAsFloat);
+        $value = (float) $valueString;
+        return is_finite($value) ? new self($value) : null;
     }
 }
