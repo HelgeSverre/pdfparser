@@ -30,20 +30,26 @@ class CompressedObjectByteOffsetParser {
             $length = $eolPos - $startStreamPos;
         }
 
-        $content = bin2hex(CompressedObjectContentParser::parseBinary($encryptionContext, $stream, $startStreamPos, $length, $dictionary)->toString());
+        $content = CompressedObjectContentParser::parseBinary($encryptionContext, $stream, $startStreamPos, $length, $dictionary)->toString();
         $first = $dictionary->getValueForKey(DictionaryKey::FIRST, IntegerValue::class)
             ?? throw new RuntimeException('Expected a dictionary entry for "First", none found');
         $buffer = '';
         $previousObjectNumber = null;
         $byteOffsets = [];
-        foreach (str_split(substr($content, 0, $first->value * 2), 2) as $char) {
-            $decodedChar = mb_chr((int) hexdec($char));
-            if (WhitespaceCharacter::tryFrom($decodedChar) !== null) {
+        $header = substr($content, 0, $first->value);
+        for ($offset = 0, $headerLength = strlen($header); $offset < $headerLength; $offset++) {
+            $character = $header[$offset];
+            if (WhitespaceCharacter::tryFrom($character) !== null) {
                 if (trim($buffer) === '') {
                     continue;
                 }
 
-                if ($buffer !== (string) $numberInBuffer = (int) $buffer) {
+                $numberInBuffer = (int) $buffer;
+                $unsignedDigits = ltrim(ltrim($buffer, '+-'), '0');
+                if (preg_match('/^[+-]?[0-9]+$/D', $buffer) !== 1
+                    || $numberInBuffer < 0
+                    || ($unsignedDigits !== '' && $unsignedDigits !== (string) $numberInBuffer)) {
+
                     throw new ParseFailureException(sprintf('Number "%s" in buffer is not a valid number', $buffer));
                 }
 
@@ -58,7 +64,7 @@ class CompressedObjectByteOffsetParser {
                 continue;
             }
 
-            $buffer .= $decodedChar;
+            $buffer .= $character;
         }
 
         return new CompressedObjectByteOffsets($byteOffsets);
