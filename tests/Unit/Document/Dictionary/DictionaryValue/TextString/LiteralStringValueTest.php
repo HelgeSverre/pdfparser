@@ -8,6 +8,17 @@ use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralS
 
 #[CoversClass(LiteralStringValue::class)]
 class LiteralStringValueTest extends TestCase {
+    public function testRepeatedDecodingPreservesEscapesAndRawValue(): void {
+        $value = new LiteralStringValue('A\\040B\\n');
+        static::assertSame("A B\n", $value->getBinaryString());
+        static::assertSame([65, 32, 66, 10], $value->getBytes());
+        static::assertSame("A B\n", $value->getBinaryString());
+        static::assertSame('A\\040B\\n', $value->value);
+        $empty = new LiteralStringValue('');
+        static::assertSame('', $empty->getBinaryString());
+        static::assertSame([], $empty->getBytes());
+    }
+
     public function testFromValue(): void {
         static::assertEquals(new LiteralStringValue('foo'), LiteralStringValue::fromValue('(foo)'));
     }
