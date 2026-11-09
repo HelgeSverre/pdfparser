@@ -9,6 +9,7 @@ readonly class BFChar {
     public function __construct(
         public int    $sourceCode,
         public string $destinationString,
+        public ?int $byteSize = null,
     ) {}
 
     public function containsCharacterCode(int $characterCode): bool {

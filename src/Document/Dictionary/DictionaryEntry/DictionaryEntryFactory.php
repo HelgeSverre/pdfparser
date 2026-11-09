@@ -8,13 +8,17 @@ use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryFactory;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\ArrayValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Boolean\BooleanValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Float\FloatValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\DictionaryValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\DocumentAwareDictionaryValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\NameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValueArray;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
-use PrinsFrank\PdfParser\Document\Encryption\RC4;
 use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
 use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
 use PrinsFrank\PdfParser\Document\Security\EncryptionContext;
@@ -27,16 +31,16 @@ class DictionaryEntryFactory {
      * @param string|array<string, mixed> $dictionaryValue
      * @throws PdfParserException
      */
-    public static function fromKeyValuePair(CompressedObject|UncompressedObject|null $object, ?EncryptionContext $encryptionContext, string $keyString, string|array $dictionaryValue): ?DictionaryEntry {
-        $dictionaryKey = DictionaryKey::tryFromKeyString($keyString)
+    public static function fromKeyValuePair(CompressedObject|UncompressedObject|null $object, ?EncryptionContext $encryptionContext, string $keyString, string|array $dictionaryValue, bool $useStandardKeys = true): ?DictionaryEntry {
+        $dictionaryKey = ($useStandardKeys ? DictionaryKey::tryFromKeyString($keyString) : null)
             ?? NameObjectStringValue::fromValue($keyString)
             ?? throw new ParseFailureException();
 
         if ($encryptionContext !== null && is_string($dictionaryValue)) {
-            if (str_starts_with($dictionaryValue, '<') && str_ends_with($dictionaryValue, '>') && ($binaryValue = hex2bin(substr($dictionaryValue, 1, -1))) !== false) {
-                $dictionaryValue = '<' . bin2hex(RC4::crypt($encryptionContext->getObjectEncryptionKey(), $binaryValue)) . '>';
-            } elseif (str_starts_with($dictionaryValue, '(') && str_ends_with($dictionaryValue, ')')) {
-                $dictionaryValue = '(' . RC4::crypt($encryptionContext->getObjectEncryptionKey(), str_replace(['\\\\', '\n', '\r', '\t', '\b', '\f', '\(', '\)'], ['\\', "\n", "\r", "\t", "\x08", "\f", '(', ')'], substr($dictionaryValue, 1, -1))) . ')';
+            if (($hexadecimalString = HexadecimalStringValue::fromValue($dictionaryValue)) !== null) {
+                $dictionaryValue = '<' . bin2hex($encryptionContext->decryptString($hexadecimalString->getBinaryString())) . '>';
+            } elseif (($literalString = LiteralStringValue::fromValue($dictionaryValue)) !== null) {
+                $dictionaryValue = '(' . strtr($encryptionContext->decryptString($literalString->getBinaryString()), ['\\' => '\\\\', '(' => '\\(', ')' => '\\)']) . ')';
             }
         }
 
@@ -44,18 +48,28 @@ class DictionaryEntryFactory {
             return null; // @see 7.3.9, null objects as value for dictionary entry shall be equivalent to omitting the entry entirely
         }
 
-        return new DictionaryEntry($dictionaryKey, self::getValue($object, $encryptionContext, $dictionaryKey, $dictionaryValue));
+        return new DictionaryEntry($dictionaryKey, self::getValue($object, $encryptionContext, $dictionaryKey, $dictionaryValue, $useStandardKeys));
     }
 
     /**
      * @param string|array<string, mixed> $value
      * @throws PdfParserException
      */
-    protected static function getValue(CompressedObject|UncompressedObject|null $object, ?EncryptionContext $encryptionContext, DictionaryKey|NameObjectStringValue $dictionaryKey, string|array $value): Dictionary|DictionaryValue|NameValue {
-        $allowedValueTypes = $dictionaryKey->getValueTypes();
+    protected static function getValue(CompressedObject|UncompressedObject|null $object, ?EncryptionContext $encryptionContext, DictionaryKey|NameObjectStringValue $dictionaryKey, string|array $value, bool $useStandardKeys = true): Dictionary|DictionaryValue|NameValue {
+        $allowedValueTypes = $useStandardKeys ? $dictionaryKey->getValueTypes() : [
+            Dictionary::class,
+            ArrayValue::class,
+            BooleanValue::class,
+            IntegerValue::class,
+            FloatValue::class,
+            HexadecimalStringValue::class,
+            LiteralStringValue::class,
+            NameObjectStringValue::class,
+        ];
         if ((in_array(Dictionary::class, $allowedValueTypes, true) || in_array(ArrayValue::class, $allowedValueTypes, true))
             && is_array($value)) {
-            return DictionaryFactory::fromArray($object, $encryptionContext, $value);
+            // FillSign metadata assigns its own meanings to names such as Text and Size.
+            return DictionaryFactory::fromArray($object, $encryptionContext, $value, $useStandardKeys && $dictionaryKey->value !== 'ADBE_FillSign');
         }
 
         if (is_string($value)

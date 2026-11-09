@@ -13,6 +13,22 @@ use PrinsFrank\PdfParser\Extraction\TextGrouping\LineGrouping\TextOverlapStrateg
 
 #[CoversClass(TextOverlapStrategy::class)]
 class TextOverlapStrategyTest extends TestCase {
+    public function testEqualCoordinatesPreserveInputOrderWhenSortingBothAxes(): void {
+        $first = new PositionedTextElement([new TextSegment(new LiteralStringValue('z'), null)], new TransformationMatrix(1, 0, 0, 1, 100, 700), new TextState(null, 10));
+        $second = new PositionedTextElement([new TextSegment(new LiteralStringValue('a'), null)], new TransformationMatrix(1, 0, 0, 1, 100, 700), new TextState(null, 10));
+        $right = new PositionedTextElement([new TextSegment(new LiteralStringValue('right'), null)], new TransformationMatrix(1, 0, 0, 1, 200, 700), new TextState(null, 10));
+        $bottom = new PositionedTextElement([new TextSegment(new LiteralStringValue('bottom'), null)], new TransformationMatrix(1, 0, 0, 1, 100, 100), new TextState(null, 10));
+
+        static::assertSame(
+            [[$first, $second, $right], [$bottom]],
+            iterator_to_array(TextOverlapStrategy::group([$bottom, $right, $first, $second]), false),
+        );
+        static::assertSame(
+            [[$first, $second, $right], [$bottom]],
+            iterator_to_array(TextOverlapStrategy::group([$first, $second, $right, $bottom]), false),
+        );
+    }
+
     public function testOrdersLinesTopToBottom(): void {
         $top = new PositionedTextElement([new TextSegment(new LiteralStringValue('top'), null)], new TransformationMatrix(1, 0, 0, 1, 100, 700), new TextState(null, 10));
         $bottom = new PositionedTextElement([new TextSegment(new LiteralStringValue('bottom'), null)], new TransformationMatrix(1, 0, 0, 1, 100, 100), new TextState(null, 10));

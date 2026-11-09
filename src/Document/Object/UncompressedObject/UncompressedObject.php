@@ -6,6 +6,8 @@ use Override;
 use PrinsFrank\PdfParser\Document\Dictionary\Decorator\DecoratedDictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\Decorator\GenericDictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParser;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\TypeNameValue;
 use PrinsFrank\PdfParser\Document\Document;
@@ -100,6 +102,7 @@ class UncompressedObject implements ObjectItem {
             $this->startOffset,
             $this->endOffset,
             $dictionary->dictionary,
+            $this->getEncryptionContext(),
         );
     }
 
@@ -123,13 +126,26 @@ class UncompressedObject implements ObjectItem {
                 || $startStreamPos === ($eolEndStreamPos = $this->document->stream->getEndOfCurrentLine($endStreamPos - 1, $this->endOffset))) {
                 return new InMemoryStream('');
             }
-
+            $dictionary = $this->getDictionary()->dictionary;
+            $length = $dictionary->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)?->value;
+            if ($length !== null) {
+                if ($length < 0 || $length > $endStreamPos - $startStreamPos) {
+                    throw new ParseFailureException('Declared stream length is outside the object');
+                }
+                return $length === 0 ? new InMemoryStream('') : CompressedObjectContentParser::parseBinary(
+                    $this->getEncryptionContext(),
+                    $this->document,
+                    $startStreamPos,
+                    $length,
+                    $dictionary,
+                );
+            }
             return CompressedObjectContentParser::parseBinary(
                 $this->getEncryptionContext(),
                 $this->document,
                 $startStreamPos,
                 ($eolEndStreamPos ?? throw new ParseFailureException(sprintf('Unable to locate marker %s', WhitespaceCharacter::LINE_FEED->value))) - $startStreamPos,
-                $this->getDictionary()->dictionary,
+                $dictionary,
             );
         }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PrinsFrank\PdfParser\Document\ContentStream;
 
 use PrinsFrank\PdfParser\Document\ContentStream\Command\ContentStreamCommand;
+use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\Object\MarkedContentOperator;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\GraphicsStateOperator;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Interaction\IncludesXObjects;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Interaction\InteractsWithColorState;
@@ -17,6 +18,11 @@ use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextState;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TransformationMatrix;
 use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Page;
 use PrinsFrank\PdfParser\Document\Dictionary\Decorator\XObject;
+use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParser;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
+use PrinsFrank\PdfParser\Stream\InMemoryStream;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 /** @api */
@@ -36,11 +42,14 @@ readonly class ContentStream {
      * @return list<PositionedTextElement>
      */
     public function getPositionedTextElements(Page|XObject $context, TransformationMatrix $transformationMatrix, array $visitedObjectIds): array {
-        $positionedTextElements = $transformationStateStack = $textStateStack = [];
+        $positionedTextElements = $transformationStateStack = $textStateStack = $markedContentStack = [];
         $textState = new TextState(null, null); // See table 103, Tf operator for initial value
         $colorState = new ColorState();
         foreach ($this->content as $content) {
             if ($content instanceof ContentStreamCommand) {
+                if ($content->operator instanceof MarkedContentOperator) {
+                    $this->applyMarkedContent($content, $context, $markedContentStack, $positionedTextElements);
+                }
                 if ($content->operator === GraphicsStateOperator::SaveCurrentStateToStack) {
                     $transformationStateStack[] = $transformationMatrix;
                     $textStateStack[] = $textState;
@@ -72,6 +81,9 @@ readonly class ContentStream {
 
             $textMatrix = new TransformationMatrix(1, 0, 0, 1, 0, 0); // Identity matrix, See Table 106, Tm operator for initial value in text object
             foreach ($content->contentStreamCommands as $contentStreamCommand) {
+                if ($contentStreamCommand->operator instanceof MarkedContentOperator) {
+                    $this->applyMarkedContent($contentStreamCommand, $context, $markedContentStack, $positionedTextElements);
+                }
                 if ($contentStreamCommand->operator instanceof InteractsWithColorState) {
                     $colorState = $contentStreamCommand->operator->applyToColorState($contentStreamCommand->operands, $colorState);
                 }
@@ -85,11 +97,47 @@ readonly class ContentStream {
                 }
 
                 if ($contentStreamCommand->operator instanceof ProducesPositionedTextElements && $textState !== null) {
-                    $positionedTextElements[] = $contentStreamCommand->operator->getPositionedTextElement($contentStreamCommand->operands, $textMatrix, $transformationMatrix, $textState, $colorState);
+                    $element = $contentStreamCommand->operator->getPositionedTextElement($contentStreamCommand->operands, $textMatrix, $transformationMatrix, $textState, $colorState);
+                    $positionedTextElements[] = $context instanceof XObject
+                        ? new PositionedTextElement($element->textSegments, $element->absoluteMatrix, $element->textState, $context)
+                        : $element;
                 }
             }
         }
 
         return $positionedTextElements;
+    }
+
+    /**
+     * @param list<array{int, ?string}> $stack
+     * @param list<PositionedTextElement> $elements
+     */
+    private function applyMarkedContent(ContentStreamCommand $command, Page|XObject $context, array &$stack, array &$elements): void {
+        if ($command->operator === MarkedContentOperator::BeginMarkedContent || $command->operator === MarkedContentOperator::BeginMarkedContentWithProperties) {
+            $stack[] = [count($elements), $command->operator === MarkedContentOperator::BeginMarkedContentWithProperties ? $this->getActualText($command->operands, $context) : null];
+        } elseif ($command->operator === MarkedContentOperator::EndMarkedContent && ($scope = array_pop($stack)) !== null && $scope[1] !== null) {
+            [$start, $actualText] = $scope;
+            for ($index = $start, $count = count($elements); isset($elements[$index]) && $index < $count; $index++) {
+                $element = $elements[$index];
+                $elements[$index] = new PositionedTextElement($element->textSegments, $element->absoluteMatrix, $element->textState, $element->resourceContext, $index === $start ? $actualText : '');
+            }
+        }
+    }
+
+    private function getActualText(string $operands, Page|XObject $context): ?string {
+        if (preg_match('~^/[^\s/<>()\[\]]+\s*(.*)$~s', $operands, $matches) !== 1) {
+            return null;
+        }
+        $properties = trim($matches[1]);
+        if (str_starts_with($properties, '<<')) {
+            $stream = new InMemoryStream($properties);
+            $dictionary = DictionaryParser::parse(null, null, $stream, 0, $stream->getSizeInBytes());
+        } elseif (str_starts_with($properties, '/')) {
+            $dictionary = $context->getResourceDictionary()?->getSubDictionary(DictionaryKey::PROPERTIES)
+                ?->getValueForKey(new NameObjectStringValue(substr($properties, 1)), Dictionary::class);
+        } else {
+            return null;
+        }
+        return $dictionary?->getStringValue(DictionaryKey::ACTUAL_TEXT)?->getText();
     }
 }

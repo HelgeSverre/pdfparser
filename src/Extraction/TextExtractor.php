@@ -17,8 +17,13 @@ class TextExtractor {
     public static function extractContent(array $positionedTextElements, Page $page): string {
         $fontCache = [];
         $textBuffer = '';
-        foreach (TextGrouping::group($positionedTextElements, $page, $fontCache) as $i => $positionedTextElementsForLine) {
-            if ($i !== 0) {
+        $lineNumber = 0;
+        foreach (TextGrouping::group($positionedTextElements, $page, $fontCache) as $positionedTextElementsForLine) {
+            if (($positionedTextElementsForLine[0]->actualText ?? null) === ''
+                && array_filter($positionedTextElementsForLine, static fn(PositionedTextElement $element): bool => $element->actualText !== '') === []) {
+                continue;
+            }
+            if ($lineNumber++ !== 0) {
                 $textBuffer .= "\n";
             }
 
@@ -30,7 +35,7 @@ class TextExtractor {
                     throw new ParseFailureException('Unable to locate font');
                 }
 
-                $font = $fontCache[$positionedTextElement->textState->fontName->value] ??= $page->getFont($positionedTextElement->textState->fontName);
+                $font = $positionedTextElement->getFont($page, $fontCache);
                 $elementText = $positionedTextElement->getText($font);
                 if ($elementText === '') {
                     $previousTextElementOnLine = $positionedTextElement;

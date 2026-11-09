@@ -14,6 +14,14 @@ use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralS
 
 #[CoversClass(NumberTreeArrayValue::class)]
 class NumberTreeArrayValueTest extends TestCase {
+    public function testIndirectReferences(): void {
+        static::assertEquals(new NumberTreeArrayValue([0 => new \PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue(1519, 0), 18 => new \PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue(1522, 0)]), NumberTreeArrayValue::fromValue("[0 1519 0 R 18 1522 0 R]"));
+    }
+
+    public function testDoesNotAcceptPartialNumberTrees(): void {
+        static::assertNull(NumberTreeArrayValue::fromValue("[0 <</S /r>> garbage]"));
+    }
+
     public function testFromValueWithExampleFromTable161(): void {
         static::assertEquals(
             new NumberTreeArrayValue(

@@ -5,6 +5,26 @@
 
 # PDF Parser
 
+## Experimental fork
+
+This branch extends upstream's current main branch with repairs and measured optimizations for real-world documents. The Composer package name and namespace remain `prinsfrank/pdfparser` and `PrinsFrank\PdfParser`; a Composer path repository can select this checkout during development. PHP 8.2+ is required.
+
+Changes cover marked-content `ActualText`, nested form resources and transformations, mixed text orientations, character maps, PDF number syntax, empty and encrypted object streams, LZW compression, image predictors, and raster export. Indexed dictionary lookups, layout sweeps, native lexer spans, and instance-local string caches reduce repeated work.
+
+Text and Markdown now preserve explicit replacement text supplied by the PDF, including Unicode spacing and punctuation. Rotated text retains its original page coordinates for annotation hit-testing. Image checks include decoded pixel comparisons; one existing indexed-image sample expectation was corrected after matching every pixel against Poppler.
+
+Use Herd's selected PHP version for local checks:
+
+```sh
+herd php vendor/bin/phpunit --testsuite=Unit,Feature
+herd php vendor/bin/phpunit tests/Samples/
+herd php vendor/bin/phpstan analyse --memory-limit=1G
+```
+
+The regression suite uses public samples and synthetic fixtures. Private evaluation documents and extracted text remain outside this repository. OCR, AES-256 encryption, unsupported character collections without Unicode maps, and general non-stencil image `Decode` arrays retain their existing limitations. Text order remains heuristic for overlapping content and imperfect OCR coordinates. AESV2 support uses OpenSSL when available.
+
+The comparison section below describes upstream's benchmark dataset. Fork measurements are recorded separately with their corpus, runtime, and trial details.
+
 [![GitHub](https://img.shields.io/badge/license-MIT-green)](https://github.com/PrinsFrank/pdfparser/blob/main/LICENSE)
 [![PHP Version Support](https://img.shields.io/packagist/php-v/prinsfrank/pdfparser)](https://github.com/PrinsFrank/pdfparser/blob/main/composer.json)
 [![codecov](https://codecov.io/gh/PrinsFrank/pdfparser/branch/main/graph/badge.svg?token=2KXO43MCIC)](https://codecov.io/gh/PrinsFrank/pdfparser)

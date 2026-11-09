@@ -65,6 +65,19 @@ enum TextShowingOperator: string implements InteractsWithTextState, ProducesPosi
         TextState $textState,
         ColorState $colorState,
     ): PositionedTextElement {
+        if ($this === self::SHOW_ARRAY) {
+            return new PositionedTextElement($this->parseArray($operands), $textMatrix->multiplyWith($globalTransformationMatrix), $textState);
+        }
+
+        if (str_starts_with($operands, '<') && str_ends_with($operands, '>')
+            && strspn($operands, "0123456789ABCDEFabcdef\x00\x09\x0A\x0C\x0D\x20", 1) === strlen($operands) - 2) {
+            return new PositionedTextElement(
+                [new TextSegment(new HexadecimalStringValue(substr($operands, 1, -1)), null)],
+                $textMatrix->multiplyWith($globalTransformationMatrix),
+                $textState,
+            );
+        }
+
         if (($result = preg_match_all('/(?<chars>(<(\\\\>|[^>])*>)|(\((?:\\\\.|[^\\\\)])*\)))\s*(?<offset>-?[0-9]+(\.[0-9]+)?)?/', $operands, $matches, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL)) === false) {
             throw new ParseFailureException(sprintf('Error with regex'));
         } elseif ($result === 0) {
@@ -84,5 +97,39 @@ enum TextShowingOperator: string implements InteractsWithTextState, ProducesPosi
             $textMatrix->multiplyWith($globalTransformationMatrix),  // 9.4.4, Note 2 on Trm calculation
             $textState,
         );
+    }
+
+    /** @return list<TextSegment> */
+    private function parseArray(string $operands): array {
+        $operands = trim($operands);
+        if (!str_starts_with($operands, '[') || !str_ends_with($operands, ']')) {
+            throw new ParseFailureException(sprintf('Invalid TJ array "%s"', $operands));
+        }
+
+        $contents = trim(substr($operands, 1, -1));
+        $segments = [];
+        $offset = 0;
+        while ($offset < strlen($contents)) {
+            if (preg_match('/\G[\x00\x09\x0A\x0C\x0D\x20]*(?:(?<chars><[^>]*>|(?<literal>\((?:\\\\[\s\S]|[^\\\\()]|(?&literal))*\)))|(?<number>[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)))[\x00\x09\x0A\x0C\x0D\x20]*/', $contents, $match, PREG_UNMATCHED_AS_NULL, $offset) !== 1) {
+                throw new ParseFailureException(sprintf('Invalid TJ array at byte %d', $offset));
+            }
+
+            $offset += strlen($match[0] ?? throw new ParseFailureException());
+            if ($match['chars'] !== null) {
+                $segments[] = new TextSegment(
+                    str_starts_with($match['chars'], '(')
+                        ? LiteralStringValue::fromValue($match['chars']) ?? throw new ParseFailureException()
+                        : HexadecimalStringValue::fromValue($match['chars']) ?? throw new ParseFailureException(),
+                    null,
+                );
+            } elseif ($segments !== []) {
+                $last = array_pop($segments);
+                $segments[] = new TextSegment($last->textString, ($last->offset ?? 0) + (float) $match['number']);
+            } else {
+                $segments[] = new TextSegment(new LiteralStringValue(''), (float) $match['number']);
+            }
+        }
+
+        return $segments;
     }
 }

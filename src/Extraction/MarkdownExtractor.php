@@ -33,8 +33,13 @@ class MarkdownExtractor {
         $textBuffer = '';
         $previousElementIsBold = $previousElementIsItalic = false;
         $previousHeadingLevel = $previousLinkUrl = null;
-        foreach (TextGrouping::group($positionedTextElements, $page, $fontCache) as $i => $positionedTextElementsForLine) {
-            if ($i !== 0) {
+        $lineNumber = 0;
+        foreach (TextGrouping::group($positionedTextElements, $page, $fontCache) as $positionedTextElementsForLine) {
+            if (($positionedTextElementsForLine[0]->actualText ?? null) === ''
+                && array_filter($positionedTextElementsForLine, static fn(PositionedTextElement $element): bool => $element->actualText !== '') === []) {
+                continue;
+            }
+            if ($lineNumber++ !== 0) {
                 if ($previousHeadingLevel !== null) {
                     self::flushInLineNodes($inLineNodes, $textBuffer, $previousElementIsBold, $previousElementIsItalic, $previousLinkUrl);
                     self::flushBlockNodes($blockNodes, $inLineNodes, $previousHeadingLevel);
@@ -56,7 +61,7 @@ class MarkdownExtractor {
                     throw new ParseFailureException('Unable to locate font');
                 }
 
-                $font = $fontCache[$positionedTextElement->textState->fontName->value] ??= $page->getFont($positionedTextElement->textState->fontName);
+                $font = $positionedTextElement->getFont($page, $fontCache);
                 $elementText = $positionedTextElement->getText($font);
                 if ($elementText === '') {
                     $previousTextElementOnLine = $positionedTextElement;
@@ -65,7 +70,7 @@ class MarkdownExtractor {
                 }
 
                 $linkUrl = self::getLinkForElement($positionedTextElement, $linkAnnotations);
-                $currentHeadingLevel = $font->getHeadingLevel($positionedTextElement->textState, $positionedTextElement->absoluteMatrix);
+                $currentHeadingLevel = $font->getHeadingLevel($positionedTextElement->textState, $positionedTextElement->getLayoutMatrix());
                 if ($previousHeadingLevel !== $currentHeadingLevel) {
                     self::flushInLineNodes($inLineNodes, $textBuffer, $previousElementIsBold, $previousElementIsItalic, $previousLinkUrl);
                     self::flushBlockNodes($blockNodes, $inLineNodes, $previousHeadingLevel);

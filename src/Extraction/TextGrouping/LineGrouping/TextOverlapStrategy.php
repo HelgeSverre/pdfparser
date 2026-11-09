@@ -23,11 +23,18 @@ class TextOverlapStrategy {
      * @param list<PositionedTextElement> $positionedTextElements
      * @return iterable<list<PositionedTextElement>>
      */
-    public static function group(array $positionedTextElements): iterable {
-        usort(
-            $positionedTextElements,
-            fn(PositionedTextElement $a, PositionedTextElement $b): int => $b->absoluteMatrix->offsetY <=> $a->absoluteMatrix->offsetY,
-        );
+    public static function group(array $positionedTextElements, bool $separateOverlays = false): iterable {
+        $previousY = INF;
+        foreach ($positionedTextElements as $element) {
+            $offsetY = $element->getLayoutMatrix()->offsetY;
+            if ($offsetY > $previousY) {
+                $offsets = array_map(static fn(PositionedTextElement $element): float => $element->getLayoutMatrix()->offsetY, $positionedTextElements);
+                $indices = array_keys($positionedTextElements);
+                array_multisort($offsets, SORT_DESC, SORT_NUMERIC, $indices, SORT_ASC, SORT_NUMERIC, $positionedTextElements);
+                break;
+            }
+            $previousY = $offsetY;
+        }
 
         /** @var array<int, true> $processedIndices */
         $processedIndices = [];
@@ -47,16 +54,16 @@ class TextOverlapStrategy {
                 continue;
             }
 
-            $highestPositionedTextElementBottom = $highestPositionedTextElement->absoluteMatrix->offsetY;
+            $highestPositionedTextElementBottom = $highestPositionedTextElement->getLayoutMatrix()->offsetY;
             $highestElementTop = $highestPositionedTextElementBottom + $highestPositionedTextElementHeight;
-            $lineLeftX = $lineRightX = $highestPositionedTextElement->absoluteMatrix->offsetX;
+            $lineLeftX = $lineRightX = $highestPositionedTextElement->getLayoutMatrix()->offsetX;
             for ($j = $i + 1; $j < $nrOfItems; $j++) {
                 if ($processedIndices[$j] ?? false) {
                     continue;
                 }
 
                 $positionedTextElement = $positionedTextElements[$j];
-                $currentElementBottom = $positionedTextElement->absoluteMatrix->offsetY;
+                $currentElementBottom = $positionedTextElement->getLayoutMatrix()->offsetY;
                 $currentHeight = $positionedTextElement->getHeight();
                 $currentElementTop = $currentElementBottom + $currentHeight;
                 if ($currentElementTop < $highestPositionedTextElementBottom) {
@@ -67,12 +74,19 @@ class TextOverlapStrategy {
                     continue;
                 }
 
+                // A tall background heading can contain a smaller foreground line vertically without sharing its line.
+                // Keep same-top superscripts together, but reject larger glyphs extending substantially above the anchor.
+                if ($separateOverlays && $currentHeight > $highestPositionedTextElementHeight
+                    && $currentElementTop - $highestElementTop > $highestPositionedTextElementHeight) {
+                    continue;
+                }
+
                 $overlap = min($highestElementTop, $currentElementTop) - max($highestPositionedTextElementBottom, $currentElementBottom);
                 if ($overlap <= 0.0) {
                     continue;
                 }
 
-                $offsetX = $positionedTextElement->absoluteMatrix->offsetX;
+                $offsetX = $positionedTextElement->getLayoutMatrix()->offsetX;
                 if ($overlap / min($currentHeight, $highestPositionedTextElementHeight) >= self::OVERLAP_RATIO
                     || ($currentHeight < $highestPositionedTextElementHeight && $offsetX >= $lineLeftX && $offsetX <= $lineRightX)) {
                     $positionedTextElementsOnLine[] = $positionedTextElement;
@@ -82,10 +96,17 @@ class TextOverlapStrategy {
                 }
             }
 
-            usort(
-                $positionedTextElementsOnLine,
-                static fn(PositionedTextElement $a, PositionedTextElement $b): int => $a->absoluteMatrix->offsetX <=> $b->absoluteMatrix->offsetX,
-            );
+            $previousX = -INF;
+            foreach ($positionedTextElementsOnLine as $element) {
+                $offsetX = $element->getLayoutMatrix()->offsetX;
+                if ($offsetX < $previousX) {
+                    $offsets = array_map(static fn(PositionedTextElement $element): float => $element->getLayoutMatrix()->offsetX, $positionedTextElementsOnLine);
+                    $indices = array_keys($positionedTextElementsOnLine);
+                    array_multisort($offsets, SORT_ASC, SORT_NUMERIC, $indices, SORT_ASC, SORT_NUMERIC, $positionedTextElementsOnLine);
+                    break;
+                }
+                $previousX = $offsetX;
+            }
 
             yield $positionedTextElementsOnLine;
         }

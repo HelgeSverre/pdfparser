@@ -5,12 +5,14 @@ namespace PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name;
 
 use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\DictionaryArrayValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
 use PrinsFrank\PdfParser\Document\Filter\Decode\ASCII85Decode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\ASCIIHexDecode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\CCITTFaxDecode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\FlateDecode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\LZWFlatePredictorValue;
+use PrinsFrank\PdfParser\Document\Filter\Decode\LZWDecode;
 use PrinsFrank\PdfParser\Document\Image\ImageType;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
@@ -31,20 +33,30 @@ enum FilterNameValue: string implements NameValue {
     case CICI_SIGN_IT = 'CIC.SignIt';
     case VERISIGN_PPKVS = 'Verisign.PPKVS';
 
-    public function decodeBinary(string $content, ?Dictionary $dictionary): string {
-        $decodeParams = $dictionary?->getSubDictionary(DictionaryKey::DECODE_PARMS);
+    public function decodeBinary(string $content, ?Dictionary $dictionary, ?int $filterIndex = null): string {
+        $decodeParams = $filterIndex !== null && $dictionary?->getTypeForKey(DictionaryKey::DECODE_PARMS) === DictionaryArrayValue::class
+            ? ($dictionary->getValueForKey(DictionaryKey::DECODE_PARMS, DictionaryArrayValue::class)?->dictionaries[$filterIndex] ?? null)
+            : $dictionary?->getSubDictionary(DictionaryKey::DECODE_PARMS);
 
         return match ($this) {
             self::JPX_DECODE,
             self::JBIG2_DECODE,
             self::DCT_DECODE => $content, // Don't decode JPEG content
+            self::LZW_DECODE => FlateDecode::applyPredictor(
+                LZWDecode::decodeBinary($content, $decodeParams?->getValueForKey(DictionaryKey::EARLY_CHANGE, IntegerValue::class)->value ?? 1),
+                LZWFlatePredictorValue::tryFrom($decodeParams?->getValueForKey(DictionaryKey::PREDICTOR, IntegerValue::class)->value ?? 1) ?? throw new ParseFailureException('Invalid LZW predictor'),
+                $decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::BITS_PER_COMPONENT, IntegerValue::class)->value ?? 8,
+            ),
             self::FLATE_DECODE => FlateDecode::decodeBinary(
                 $content,
                 $decodeParams !== null && ($predictorValue = LZWFlatePredictorValue::tryFrom((int) $decodeParams->getValueForKey(DictionaryKey::PREDICTOR, IntegerValue::class)?->value)) !== null
                     ? $predictorValue
                     : LZWFlatePredictorValue::None,
-                ($decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1)
-                    * ($decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1),
+                $decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::BITS_PER_COMPONENT, IntegerValue::class)->value ?? 8,
             ),
             self::CCITT_FAX_DECODE => CCITTFaxDecode::addHeaderAndIFD(
                 $content,
@@ -64,7 +76,7 @@ enum FilterNameValue: string implements NameValue {
 
     public function getImageType(): ?ImageType {
         return match ($this) {
-            self::LZW_DECODE => ImageType::TIFF,
+            self::LZW_DECODE,
             self::FLATE_DECODE => ImageType::PNG,
             self::RUN_LENGTH_DECODE => ImageType::RAW,
             self::CCITT_FAX_DECODE => ImageType::TIFF_FAX,

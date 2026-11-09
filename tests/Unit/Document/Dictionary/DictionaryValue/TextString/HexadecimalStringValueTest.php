@@ -9,6 +9,17 @@ use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 #[CoversClass(HexadecimalStringValue::class)]
 class HexadecimalStringValueTest extends TestCase {
+    public function testRepeatedDecodingPreservesRawValueAndByteResults(): void {
+        $value = new HexadecimalStringValue("4 1\n4");
+        static::assertSame('A@', $value->getBinaryString());
+        static::assertSame([65, 64], $value->getBytes());
+        static::assertSame('A@', $value->getBinaryString());
+        static::assertSame("4 1\n4", $value->value);
+        $empty = new HexadecimalStringValue('');
+        static::assertSame('', $empty->getBinaryString());
+        static::assertSame([], $empty->getBytes());
+    }
+
     public function testFromValue(): void {
         static::assertEquals(new HexadecimalStringValue('0000'), HexadecimalStringValue::fromValue('<0000>'));
     }
