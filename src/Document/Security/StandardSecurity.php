@@ -71,9 +71,13 @@ readonly class StandardSecurity {
             throw new NotImplementedException('Unsupported security handler revision: ' . $encryptDictionary->getStandardSecurityHandlerRevision()->value);
         }
 
-        $fileEncryptionKeyLengthInBits = $encryptDictionary->getLengthFileEncryptionKeyInBits() ?? throw new ParseFailureException();
-        if ($encryptDictionary->getSecurityAlgorithm() === SecurityAlgorithm::AES_Key_length_256) { // V = 4
-            throw new NotImplementedException('AES-based stream decryption is not yet supported.');
+        $fileEncryptionKeyLengthInBits = match ($encryptDictionary->getSecurityAlgorithm()) {
+            SecurityAlgorithm::RC4_Or_AES_Key_length_40 => 40,
+            SecurityAlgorithm::RC4_Or_AES_Key_length_128 => 128,
+            default => $encryptDictionary->getLengthFileEncryptionKeyInBits() ?? 40,
+        };
+        if ($encryptDictionary->getSecurityAlgorithm() === SecurityAlgorithm::AES_Key_length_256) {
+            throw new NotImplementedException('AES-256 decryption is not yet supported.');
         }
 
         if ($fileEncryptionKeyLengthInBits % 8 !== 0 || !is_int($fileEncryptionKeyLengthInBytes = $fileEncryptionKeyLengthInBits / 8)) {
@@ -118,9 +122,13 @@ readonly class StandardSecurity {
             throw new NotImplementedException('Unsupported security handler revision: ' . $encryptDictionary->getStandardSecurityHandlerRevision()->value);
         }
 
-        $fileEncryptionKeyLengthInBits = $encryptDictionary->getLengthFileEncryptionKeyInBits() ?? throw new ParseFailureException();
-        if ($encryptDictionary->getSecurityAlgorithm() === SecurityAlgorithm::AES_Key_length_256) { // V = 4
-            throw new NotImplementedException('AES-based stream decryption is not yet supported.');
+        $fileEncryptionKeyLengthInBits = match ($encryptDictionary->getSecurityAlgorithm()) {
+            SecurityAlgorithm::RC4_Or_AES_Key_length_40 => 40,
+            SecurityAlgorithm::RC4_Or_AES_Key_length_128 => 128,
+            default => $encryptDictionary->getLengthFileEncryptionKeyInBits() ?? 40,
+        };
+        if ($encryptDictionary->getSecurityAlgorithm() === SecurityAlgorithm::AES_Key_length_256) {
+            throw new NotImplementedException('AES-256 decryption is not yet supported.');
         }
 
         if ($fileEncryptionKeyLengthInBits % 8 !== 0 || !is_int($fileEncryptionKeyLengthInBytes = $fileEncryptionKeyLengthInBits / 8)) {
@@ -145,7 +153,12 @@ readonly class StandardSecurity {
             $md5Hash = md5(substr($md5Hash, 0, $fileEncryptionKeyLengthInBytes), true);
         }
 
-        return new FileEncryptionKey(substr($md5Hash, 0, $fileEncryptionKeyLengthInBytes));
+        return new FileEncryptionKey(
+            substr($md5Hash, 0, $fileEncryptionKeyLengthInBytes),
+            $encryptDictionary->getStreamEncryptionMethod(),
+            $encryptDictionary->getStringEncryptionMethod(),
+            $encryptDictionary->isMetadataEncrypted(),
+        );
     }
 
     /** @see 7.6.4.3.2 step a */

@@ -2,12 +2,15 @@
 
 namespace PrinsFrank\PdfParser\Document\Dictionary\Decorator;
 
+use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Boolean\BooleanValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\CFMNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\SecurityHandlerNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
 use PrinsFrank\PdfParser\Document\Security\SecurityAlgorithm;
 use PrinsFrank\PdfParser\Document\Security\StandardSecurityHandlerRevision;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
@@ -31,6 +34,35 @@ readonly class EncryptDictionary extends DecoratedDictionary {
     public function getLengthFileEncryptionKeyInBits(): ?int {
         return $this->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)
             ?->value;
+    }
+
+    public function getStreamEncryptionMethod(): CFMNameValue {
+        return $this->getEncryptionMethod(DictionaryKey::STM_F);
+    }
+
+    public function getStringEncryptionMethod(): CFMNameValue {
+        return $this->getEncryptionMethod(DictionaryKey::STR_F);
+    }
+
+    private function getEncryptionMethod(DictionaryKey $key): CFMNameValue {
+        if ($this->getSecurityAlgorithm() !== SecurityAlgorithm::RC4_Or_AES_Key_length_128) {
+            return CFMNameValue::V2;
+        }
+
+        $name = $this->getValueForKey($key, NameObjectStringValue::class);
+        return $this->getCryptFilterMethod($name);
+    }
+
+    public function getCryptFilterMethod(?NameObjectStringValue $name): CFMNameValue {
+        if ($name === null || $name->getText() === 'Identity') {
+            return CFMNameValue::None;
+        }
+
+        $filter = $this->getValueForKey(DictionaryKey::CF, Dictionary::class)
+            ?->getValueForKey($name, Dictionary::class)
+            ?? throw new ParseFailureException('Unable to resolve crypt filter ' . $name->getText());
+
+        return $filter->getValueForKey(DictionaryKey::CFM, CFMNameValue::class) ?? CFMNameValue::None;
     }
 
     public function getOwnerPasswordEntry(): string {
