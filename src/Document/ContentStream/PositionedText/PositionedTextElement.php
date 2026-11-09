@@ -21,10 +21,15 @@ readonly class PositionedTextElement {
         public TransformationMatrix $absoluteMatrix,
         public TextState $textState,
         public ?XObject $resourceContext = null,
+        public ?string $actualText = null,
     ) {}
 
     /** @throws ParseFailureException */
     public function getText(Font $font): string {
+        if ($this->actualText !== null) {
+            return $this->actualText;
+        }
+
         $differences = $font->getDifferences();
         $encoding = $font->getEncoding();
         $toUnicodeCMap = $font->getToUnicodeCMap();

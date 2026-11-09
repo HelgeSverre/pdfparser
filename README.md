@@ -82,7 +82,12 @@ $document = (new PdfParser())
 $document->getMarkdown();
 ```
 
+Both methods use marked-content `ActualText` replacements for sequences containing text. This can preserve characters such as nonbreaking spaces and soft hyphens that differ from the painted glyphs. Text from nested Form XObjects uses the Form's fonts and transformation matrix. Replacement text attached to the structure tree or to graphics-only sequences is not yet supported.
+
+Rotated and reflected text is grouped in its reading direction before being placed among the page's columns. Reading order is inferred from positions, so complex drawings and overlapping text can still appear in an unexpected order. Invisible text is included; it can contain searchable labels that are not visible on the page.
+
 ## 💖 Sponsorship
+
 
 If you depend on this package and want to support its maintenance, please consider sponsoring me. I'll continue maintaining and releasing updates regardless, but [sponsorships](https://github.com/sponsors/PrinsFrank) help cover the time it takes to review changes and keep everything accurate.
 
