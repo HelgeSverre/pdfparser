@@ -24,6 +24,11 @@ class PredictorGeometryTest extends TestCase {
         yield '1-bit padded row' => [15, 9, 1, 1, '01aa01', 'aaab'];
         yield '4-bit RGB byte stride' => [15, 2, 3, 4, '01123444', '123456'];
         yield '16-bit RGB byte stride' => [15, 2, 3, 16, '01000a0014001e000500050005', '000a0014001e000f00190023'];
+        yield 'TIFF RGB' => [2, 2, 3, 8, '0a141e050505', '0a141e0f1923'];
+        yield 'TIFF 1-bit row padding' => [2, 3, 1, 1, 'e0a0', 'a0c0'];
+        yield 'TIFF 2-bit overflow' => [2, 3, 1, 2, 'fc', 'e4'];
+        yield 'TIFF 4-bit RGB' => [2, 2, 3, 4, '123333', '123456'];
+        yield 'TIFF 16-bit overflow' => [2, 3, 1, 16, 'ffff00020002', 'ffff00010003'];
     }
 
     #[DataProvider('rows')]

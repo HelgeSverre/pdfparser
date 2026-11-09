@@ -39,10 +39,8 @@ class FlateDecode {
         }
         $rowBytes = intdiv($columns * $colors * $bitsPerComponent + 7, 8);
         $bytesPerPixel = intdiv($colors * $bitsPerComponent + 7, 8);
-        if ($predictor === LZWFlatePredictorValue::TIFFPredictor2) {
-            throw new ParseFailureException('Unsupported predictor ' . $predictor->value);
-        }
-        $encodedRowBytes = $rowBytes + 1;
+        $isTIFF = $predictor === LZWFlatePredictorValue::TIFFPredictor2;
+        $encodedRowBytes = $rowBytes + ($isTIFF ? 0 : 1);
         if (strlen($decodedValue) % $encodedRowBytes !== 0) {
             throw new ParseFailureException('Incomplete predictor row');
         }
@@ -50,6 +48,11 @@ class FlateDecode {
         $result = '';
         $previous = str_repeat("\0", $rowBytes);
         for ($offset = 0, $length = strlen($decodedValue); $offset < $length; $offset += $encodedRowBytes) {
+            if ($isTIFF) {
+                $result .= self::decodeTIFFRow(substr($decodedValue, $offset, $rowBytes), $columns, $colors, $bitsPerComponent);
+                continue;
+            }
+
             $algorithm = PNGPredictorAlgorithm::tryFrom(ord($decodedValue[$offset]))
                 ?? throw new ParseFailureException('Unrecognized PNG predictor algorithm');
             $row = substr($decodedValue, $offset + 1, $rowBytes);
@@ -79,6 +82,27 @@ class FlateDecode {
         $aboveDistance = abs($estimate - $above);
         $upperLeftDistance = abs($estimate - $upperLeft);
         return $leftDistance <= $aboveDistance && $leftDistance <= $upperLeftDistance ? $left : ($aboveDistance <= $upperLeftDistance ? $above : $upperLeft);
+    }
+
+    private static function decodeTIFFRow(string $row, int $columns, int $colors, int $bits): string {
+        $mask = (1 << $bits) - 1;
+        for ($sample = $colors, $count = $columns * $colors; $sample < $count; $sample++) {
+            $bitOffset = $sample * $bits;
+            $leftBitOffset = ($sample - $colors) * $bits;
+            $byte = intdiv($bitOffset, 8);
+            $leftByte = intdiv($leftBitOffset, 8);
+            if ($bits === 16) {
+                $value = ((ord($row[$byte]) << 8 | ord($row[$byte + 1])) + (ord($row[$leftByte]) << 8 | ord($row[$leftByte + 1]))) & $mask;
+                $row[$byte] = chr($value >> 8);
+                $row[$byte + 1] = chr($value & 255);
+            } else {
+                $shift = 8 - $bits - ($bitOffset % 8);
+                $leftShift = 8 - $bits - ($leftBitOffset % 8);
+                $value = (((ord($row[$byte]) >> $shift) & $mask) + ((ord($row[$leftByte]) >> $leftShift) & $mask)) & $mask;
+                $row[$byte] = chr((ord($row[$byte]) & ~($mask << $shift)) | ($value << $shift));
+            }
+        }
+        return $row;
     }
 
     /** @param int<0, max> $maxBytes */
