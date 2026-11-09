@@ -22,6 +22,11 @@ class FlateDecode {
         }
 
         $decodedValue = self::decode($value, 64 * self::BYTES_IN_MEGABYTE);
+        return self::applyPredictor($decodedValue, $predictor, $columns);
+    }
+
+    public static function applyPredictor(string $value, LZWFlatePredictorValue $predictor, int $columns = 1): string {
+        $decodedValue = $value;
         if ($predictor === LZWFlatePredictorValue::None) {
             return $decodedValue;
         }
