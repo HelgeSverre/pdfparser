@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PrinsFrank\PdfParser\Document\Dictionary;
 
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParseContext\DictionaryParseContext;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParseContext\NestingContext;
 use PrinsFrank\PdfParser\Document\Generic\Character\DelimiterCharacter;
@@ -17,12 +18,14 @@ use PrinsFrank\PdfParser\Stream\Stream;
 /** @internal */
 class DictionaryParser {
     /**
+     * @param list<DictionaryKey>|null $keysToParse
+     *
      * @phpstan-assert int<0, max> $startPos
      * @phpstan-assert int<1, max> $nrOfBytes
      *
      * @throws PdfParserException
      */
-    public static function parse(UncompressedObject|CompressedObject|null $object, ?EncryptionContext $encryptionContext, Stream $stream, int $startPos, int $nrOfBytes): Dictionary {
+    public static function parse(UncompressedObject|CompressedObject|null $object, ?EncryptionContext $encryptionContext, Stream $stream, int $startPos, int $nrOfBytes, ?array $keysToParse = null): Dictionary {
         $dictionaryArray = [];
         $nestingContext = (new NestingContext())->setContext(DictionaryParseContext::ROOT);
         $arrayNestingLevel = 0;
@@ -124,7 +127,14 @@ class DictionaryParser {
             }
         }
 
+        if ($keysToParse !== null) {
+            $dictionaryArray = array_intersect_key($dictionaryArray, array_fill_keys(
+                array_map(static fn(DictionaryKey $key): string => '/' . $key->value, $keysToParse),
+                true,
+            ));
+        }
         return DictionaryFactory::fromArray($object, $encryptionContext, $dictionaryArray);
+
     }
 
     /** @param array<string, mixed> $dictionaryArray */

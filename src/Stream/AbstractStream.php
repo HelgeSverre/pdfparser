@@ -36,7 +36,7 @@ abstract class AbstractStream implements Stream {
         }
 
         return min($firstLineFeedPos, $firstCarriageReturnPos)
-            + (abs($firstCarriageReturnPos - $firstLineFeedPos) === 1 ? 2 : 1); // If the CR and LF are next to each other, we need to add 2 bytes, otherwise 1
+            + ($firstLineFeedPos === $firstCarriageReturnPos + 1 ? 2 : 1); // Only CR followed by LF forms a two-byte end-of-line marker.
     }
 
     #[Override]

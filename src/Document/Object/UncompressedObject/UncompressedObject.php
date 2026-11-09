@@ -6,6 +6,8 @@ use Override;
 use PrinsFrank\PdfParser\Document\Dictionary\Decorator\DecoratedDictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\Decorator\GenericDictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParser;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\TypeNameValue;
 use PrinsFrank\PdfParser\Document\Document;
@@ -115,21 +117,51 @@ class UncompressedObject implements ObjectItem {
         );
     }
 
+    private function getDeclaredStreamLength(int $before): ?int {
+        $start = $this->document->stream->firstPos(DelimiterCharacter::LESS_THAN_SIGN, $this->startOffset, $before)
+            ?? throw new ParseFailureException('Unable to locate stream dictionary');
+        $dictionary = DictionaryParser::parse(
+            $this,
+            $this->getEncryptionContext(),
+            $this->document->stream,
+            $start,
+            $before - $start,
+            [DictionaryKey::LENGTH],
+        );
+        return $dictionary->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)?->value;
+    }
+
     #[Override]
     public function getContent(): Stream {
         if (($startStreamPos = $this->document->stream->getStartNextLineAfter(Marker::STREAM, $this->startOffset, $this->endOffset)) !== null
             && ($endStreamPos = $this->document->stream->lastPos(Marker::END_STREAM, $this->document->stream->getSizeInBytes() - $this->endOffset)) !== null) {
-            if ($startStreamPos === $endStreamPos
-                || $startStreamPos === ($eolEndStreamPos = $this->document->stream->getEndOfCurrentLine($endStreamPos - 1, $this->endOffset))) {
+            if ($startStreamPos === $endStreamPos) {
                 return new InMemoryStream('');
             }
-
+            $eolEndStreamPos = $this->document->stream->getEndOfCurrentLine($endStreamPos - 1, $this->endOffset);
+            if ($startStreamPos === $eolEndStreamPos && ($this->getDeclaredStreamLength($startStreamPos) ?? 0) === 0) {
+                return new InMemoryStream('');
+            }
+            $dictionary = $this->getDictionary()->dictionary;
+            $length = $dictionary->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)?->value;
+            if ($length !== null) {
+                if ($length < 0 || $length > $endStreamPos - $startStreamPos) {
+                    throw new ParseFailureException('Declared stream length is outside the object');
+                }
+                return $length === 0 ? new InMemoryStream('') : CompressedObjectContentParser::parseBinary(
+                    $this->getEncryptionContext(),
+                    $this->document,
+                    $startStreamPos,
+                    $length,
+                    $dictionary,
+                );
+            }
             return CompressedObjectContentParser::parseBinary(
                 $this->getEncryptionContext(),
                 $this->document,
                 $startStreamPos,
                 ($eolEndStreamPos ?? throw new ParseFailureException(sprintf('Unable to locate marker %s', WhitespaceCharacter::LINE_FEED->value))) - $startStreamPos,
-                $this->getDictionary()->dictionary,
+                $dictionary,
             );
         }
 
