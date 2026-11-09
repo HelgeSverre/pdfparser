@@ -76,7 +76,7 @@ enum FilterNameValue: string implements NameValue {
 
     public function getImageType(): ?ImageType {
         return match ($this) {
-            self::LZW_DECODE => ImageType::TIFF,
+            self::LZW_DECODE,
             self::FLATE_DECODE => ImageType::PNG,
             self::RUN_LENGTH_DECODE => ImageType::RAW,
             self::CCITT_FAX_DECODE => ImageType::TIFF_FAX,
