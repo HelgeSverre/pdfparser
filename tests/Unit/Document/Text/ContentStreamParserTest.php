@@ -31,7 +31,61 @@ use PrinsFrank\PdfParser\Stream\FileStream;
 
 #[CoversClass(ContentStreamParser::class)]
 class ContentStreamParserTest extends TestCase {
+    public function testNumericAndHexSpansPreserveOperatorsAndStreamBoundaries(): void {
+        $first = $this->createMock(UncompressedObject::class);
+        $first->method('getContent')->willReturn(FileStream::fromString('100 2'));
+        $second = $this->createMock(UncompressedObject::class);
+        $second->method('getContent')->willReturn(FileStream::fromString("00 d0 0 0 600 700 800 900 d1 BT 12.3 -45.6 Td <0041\t00"));
+        $third = $this->createMock(UncompressedObject::class);
+        $third->method('getContent')->willReturn(FileStream::fromString('42ABC> Tj ET'));
+
+        static::assertEquals(
+            new ContentStream(
+                new ContentStreamCommand(Type3FontOperator::SetWidth, '100 200'),
+                new ContentStreamCommand(Type3FontOperator::SetWidthAndBoundingBox, '0 0 600 700 800 900'),
+                (new TextObject())
+                    ->addContentStreamCommand(new ContentStreamCommand(TextPositioningOperator::MOVE_OFFSET, '12.3 -45.6'))
+                    ->addContentStreamCommand(new ContentStreamCommand(TextShowingOperator::SHOW, "<0041\t0042ABC>")),
+            ),
+            ContentStreamParser::parse([$first, $second, $third]),
+        );
+    }
+
+    public function testCommentsAtOperandStartAndBetweenNumbers(): void {
+        $object = $this->createMock(UncompressedObject::class);
+        $object->method('getContent')->willReturn(FileStream::fromString("% initial comment\n1 0 % another comment\r0 1 20 30 cm"));
+        $content = ContentStreamParser::parse([$object])->content;
+        static::assertCount(1, $content);
+        static::assertInstanceOf(ContentStreamCommand::class, $content[0]);
+        static::assertSame(GraphicsStateOperator::ModifyCurrentTransformationMatrix, $content[0]->operator);
+        static::assertSame(['1', '0', '0', '1', '20', '30'], preg_split('/\s+/', $content[0]->operands));
+    }
+
+    public function testCommentCharactersAndNestedParenthesesInsideLiteralStrings(): void {
+        $object = $this->createMock(UncompressedObject::class);
+        $object->method('getContent')->willReturn(FileStream::fromString('BT (100% (nested) \(escaped\)) Tj ET'));
+        $content = ContentStreamParser::parse([$object])->content;
+        static::assertCount(1, $content);
+        static::assertInstanceOf(TextObject::class, $content[0]);
+        static::assertEquals([new ContentStreamCommand(TextShowingOperator::SHOW, '(100% (nested) \(escaped\))')], $content[0]->contentStreamCommands);
+    }
+
+    public function testMarkedContentRetainsNestedPropertyOperands(): void {
+        $object = $this->createMock(UncompressedObject::class);
+        $object->method('getContent')->willReturn(FileStream::fromString('/Span << /Layout << /Foo 1 >> /ActualText (a(b) >>) >> BDC /P BMC EMC EMC'));
+        $commands = ContentStreamParser::parse([$object])->content;
+        static::assertCount(4, $commands);
+        foreach (['BDC', 'BMC', 'EMC', 'EMC'] as $index => $operator) {
+            static::assertInstanceOf(ContentStreamCommand::class, $commands[$index]);
+            static::assertSame($operator, $commands[$index]->operator->value);
+        }
+        static::assertInstanceOf(ContentStreamCommand::class, $commands[0]);
+
+        static::assertSame('/Span << /Layout << /Foo 1 >> /ActualText (a(b) >>) >>', $commands[0]->operands);
+    }
+
     public function testParse(): void {
+
         $contentStream = FileStream::fromString(
             <<<EOD
                 BT
