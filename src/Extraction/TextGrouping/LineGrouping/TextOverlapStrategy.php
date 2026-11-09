@@ -24,10 +24,17 @@ class TextOverlapStrategy {
      * @return iterable<list<PositionedTextElement>>
      */
     public static function group(array $positionedTextElements, bool $separateOverlays = false): iterable {
-        usort(
-            $positionedTextElements,
-            fn(PositionedTextElement $a, PositionedTextElement $b): int => $b->getLayoutMatrix()->offsetY <=> $a->getLayoutMatrix()->offsetY,
-        );
+        $previousY = INF;
+        foreach ($positionedTextElements as $element) {
+            $offsetY = $element->getLayoutMatrix()->offsetY;
+            if ($offsetY > $previousY) {
+                $offsets = array_map(static fn(PositionedTextElement $element): float => $element->getLayoutMatrix()->offsetY, $positionedTextElements);
+                $indices = array_keys($positionedTextElements);
+                array_multisort($offsets, SORT_DESC, SORT_NUMERIC, $indices, SORT_ASC, SORT_NUMERIC, $positionedTextElements);
+                break;
+            }
+            $previousY = $offsetY;
+        }
 
         /** @var array<int, true> $processedIndices */
         $processedIndices = [];
@@ -89,10 +96,17 @@ class TextOverlapStrategy {
                 }
             }
 
-            usort(
-                $positionedTextElementsOnLine,
-                static fn(PositionedTextElement $a, PositionedTextElement $b): int => $a->getLayoutMatrix()->offsetX <=> $b->getLayoutMatrix()->offsetX,
-            );
+            $previousX = -INF;
+            foreach ($positionedTextElementsOnLine as $element) {
+                $offsetX = $element->getLayoutMatrix()->offsetX;
+                if ($offsetX < $previousX) {
+                    $offsets = array_map(static fn(PositionedTextElement $element): float => $element->getLayoutMatrix()->offsetX, $positionedTextElementsOnLine);
+                    $indices = array_keys($positionedTextElementsOnLine);
+                    array_multisort($offsets, SORT_ASC, SORT_NUMERIC, $indices, SORT_ASC, SORT_NUMERIC, $positionedTextElementsOnLine);
+                    break;
+                }
+                $previousX = $offsetX;
+            }
 
             yield $positionedTextElementsOnLine;
         }

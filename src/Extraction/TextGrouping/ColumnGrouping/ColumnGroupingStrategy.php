@@ -31,9 +31,10 @@ class ColumnGroupingStrategy {
     /**
      * @param list<PositionedTextElement> $positionedTextElements
      * @param array<string, Font> $fontCache
+     * @param ?list<list<PositionedTextElement>> $positionedElementsGroupedByLine
      * @return list<list<PositionedTextElement>>
      */
-    public static function group(array $positionedTextElements, Page $page, array &$fontCache): array {
+    public static function group(array $positionedTextElements, Page $page, array &$fontCache, ?array &$positionedElementsGroupedByLine = null, bool $separateOverlays = false): array {
         $visibleElements = array_filter(
             $positionedTextElements,
             static fn(PositionedTextElement $e) => $e->getHeight() > 0 && $e->getLayoutRight($page, $fontCache) > $e->getLayoutMatrix()->offsetX,
@@ -41,6 +42,11 @@ class ColumnGroupingStrategy {
 
         if ($visibleElements === []) {
             return [];
+        }
+        $positionedElementsGroupedByLine = iterator_to_array(TextOverlapStrategy::group($positionedTextElements, $separateOverlays), false);
+        $nrOfLines = count($positionedElementsGroupedByLine);
+        if ($nrOfLines < self::NR_OF_LINES_TO_BE_CONSIDERED_COLUMNS) {
+            return [$positionedTextElements];
         }
         $pageLeft = min(
             $elementsLeft = array_map(
@@ -59,28 +65,29 @@ class ColumnGroupingStrategy {
             array_unique([...$elementsLeft, ...$elementsRight]),
             fn(float $xCandidate) => $xCandidate > $pageLeft + ($pageWidth * 0.07) && $xCandidate < $pageRight - ($pageWidth * 0.07),
         );
-        $positionedElementsGroupedByLine = iterator_to_array(TextOverlapStrategy::group($positionedTextElements), false);
-        $nrOfLines = count($positionedElementsGroupedByLine);
-        $elementMissCounts = $headerEndLineIndices = [];
         sort($xCandidates);
-        foreach ($xCandidates as $xCandidateIndex => $xCandidate) {
-            $currentMissCount = $maxStreakCount = 0;
-            $currentStreakStart = $maxStreakStart = null;
-            foreach ($positionedElementsGroupedByLine as $lineIndex => $positionedTextElementsOnLine) {
-                if (self::elementOnLineCrossesX($positionedTextElementsOnLine, $xCandidate, $page, $fontCache)) {
-                    $currentMissCount = 0;
-                    $currentStreakStart = null;
+        $elementMissCounts = $currentMissCounts = array_fill(0, count($xCandidates), 0);
+        $headerEndLineIndices = array_fill(0, count($xCandidates), null);
+        foreach ($positionedElementsGroupedByLine as $lineIndex => $positionedTextElementsOnLine) {
+            $elementIndex = 0;
+            $rightmostEdge = -INF;
+            foreach ($xCandidates as $xCandidateIndex => $xCandidate) {
+                while (isset($positionedTextElementsOnLine[$elementIndex])
+                    && $positionedTextElementsOnLine[$elementIndex]->getLayoutMatrix()->offsetX < $xCandidate) {
+                    $rightmostEdge = max($rightmostEdge, $positionedTextElementsOnLine[$elementIndex]->getLayoutRight($page, $fontCache));
+                    $elementIndex++;
+                }
+
+                if ($rightmostEdge > $xCandidate) {
+                    $currentMissCounts[$xCandidateIndex] = 0;
                 } else {
-                    $currentStreakStart ??= $lineIndex;
-                    $currentMissCount++;
-                    if ($currentMissCount > $maxStreakCount) {
-                        $maxStreakCount = $currentMissCount;
-                        $maxStreakStart = $currentStreakStart;
+                    $currentMissCount = ++$currentMissCounts[$xCandidateIndex];
+                    if ($currentMissCount > $elementMissCounts[$xCandidateIndex]) {
+                        $elementMissCounts[$xCandidateIndex] = $currentMissCount;
+                        $headerEndLineIndices[$xCandidateIndex] = $lineIndex - $currentMissCount + 1;
                     }
                 }
             }
-            $elementMissCounts[$xCandidateIndex] = $maxStreakCount;
-            $headerEndLineIndices[$xCandidateIndex] = $maxStreakStart;
         }
 
         if ($elementMissCounts === []
@@ -149,20 +156,5 @@ class ColumnGroupingStrategy {
                 ? []
                 : array_merge(...$positionedTextElementsFooter),
         ]));
-    }
-
-    /**
-     * @param list<PositionedTextElement> $positionedTextElementsOnLine
-     * @param array<string, Font> $fontCache
-     */
-    private static function elementOnLineCrossesX(array $positionedTextElementsOnLine, float $x, Page $page, array &$fontCache): bool {
-        foreach ($positionedTextElementsOnLine as $positionedTextElementOnLine) {
-            if ($positionedTextElementOnLine->getLayoutMatrix()->offsetX < $x
-                && $positionedTextElementOnLine->getLayoutRight($page, $fontCache) > $x) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }
