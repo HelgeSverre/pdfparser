@@ -45,16 +45,18 @@ enum FilterNameValue: string implements NameValue {
             self::LZW_DECODE => FlateDecode::applyPredictor(
                 LZWDecode::decodeBinary($content, $decodeParams?->getValueForKey(DictionaryKey::EARLY_CHANGE, IntegerValue::class)->value ?? 1),
                 LZWFlatePredictorValue::tryFrom($decodeParams?->getValueForKey(DictionaryKey::PREDICTOR, IntegerValue::class)->value ?? 1) ?? throw new ParseFailureException('Invalid LZW predictor'),
-                ($decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1)
-                    * ($decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1),
+                $decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::BITS_PER_COMPONENT, IntegerValue::class)->value ?? 8,
             ),
             self::FLATE_DECODE => FlateDecode::decodeBinary(
                 $content,
                 $decodeParams !== null && ($predictorValue = LZWFlatePredictorValue::tryFrom((int) $decodeParams->getValueForKey(DictionaryKey::PREDICTOR, IntegerValue::class)?->value)) !== null
                     ? $predictorValue
                     : LZWFlatePredictorValue::None,
-                ($decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1)
-                    * ($decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1),
+                $decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1,
+                $decodeParams?->getValueForKey(DictionaryKey::BITS_PER_COMPONENT, IntegerValue::class)->value ?? 8,
             ),
             self::CCITT_FAX_DECODE => CCITTFaxDecode::addHeaderAndIFD(
                 $content,
