@@ -10,6 +10,7 @@ use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TransformationMat
 use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\ArrayValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Boolean\BooleanValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\CIEColorSpaceNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\DeviceColorSpaceNameValue;
@@ -146,13 +147,34 @@ readonly class XObject extends DecoratedDictionary {
             throw new RuntimeException(sprintf('Width %d cannot be less than 1', $width));
         }
 
+        $imageMask = $this->getValueForKey(DictionaryKey::IMAGE_MASK, BooleanValue::class)->value ?? false;
         return RasterizedImage::toPNG(
-            $this->getColorSpace() ?? throw new RuntimeException('Unable to retrieve colorspace'),
+            $imageMask ? new ColorSpace(false, DeviceColorSpaceNameValue::DeviceGray, null, null, null) : ($this->getColorSpace() ?? throw new RuntimeException('Unable to retrieve colorspace')),
             $width,
             $height,
-            $this->getBitsPerComponent() ?? throw new RuntimeException('Unable to retrieve bits per component'),
+            $this->getBitsPerComponent() ?? ($imageMask ? 1 : throw new RuntimeException('Unable to retrieve bits per component')),
             $content,
+            $imageMask,
+            $imageMask && $this->isImageMaskInverted(),
         );
+    }
+
+    private function isImageMaskInverted(): bool {
+        $decode = $this->getValueForKey(DictionaryKey::DECODE, ArrayValue::class);
+        if ($decode === null) {
+            return false;
+        }
+
+        $values = array_map(static function ($value): float {
+            if (!is_int($value) && (!is_string($value) || preg_match('/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/D', $value) !== 1)) {
+                throw new ParseFailureException('Image mask Decode entries must be PDF numbers');
+            }
+            return (float) $value;
+        }, $decode->value);
+        if ($values !== [0.0, 1.0] && $values !== [1.0, 0.0]) {
+            throw new ParseFailureException('Image mask Decode must be [0 1] or [1 0]');
+        }
+        return $values[0] === 1.0;
     }
 
     /**
