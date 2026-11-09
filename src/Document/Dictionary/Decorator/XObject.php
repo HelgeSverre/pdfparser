@@ -3,7 +3,6 @@
 namespace PrinsFrank\PdfParser\Document\Dictionary\Decorator;
 
 use Override;
-use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\Object\TextObjectOperator;
 use PrinsFrank\PdfParser\Document\ContentStream\ContentStreamParser;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\PositionedTextElement;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TransformationMatrix;
@@ -164,9 +163,21 @@ readonly class XObject extends DecoratedDictionary {
             return [];
         }
 
-        if (($stream = $this->getContent())->firstPos(TextObjectOperator::BEGIN, 0, $stream->getSizeInBytes()) === null
-            || $this->dictionary->object === null) {
+        if ($this->dictionary->object === null) {
             return [];
+        }
+
+        if (($matrix = $this->getValueForKey(DictionaryKey::MATRIX, ArrayValue::class)) !== null) {
+            if (count($matrix->value) !== 6) {
+                throw new ParseFailureException('A form matrix must contain six numbers');
+            }
+            $values = array_map(static function ($value): float {
+                if (preg_match('/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/D', (string) $value) !== 1 || !is_finite((float) $value)) {
+                    throw new ParseFailureException('Invalid form matrix number');
+                }
+                return (float) $value;
+            }, $matrix->value);
+            $transformationMatrix = (new TransformationMatrix(...$values))->multiplyWith($transformationMatrix);
         }
 
         return ContentStreamParser::parse([$this->dictionary->object])
