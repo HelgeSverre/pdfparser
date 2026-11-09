@@ -12,6 +12,7 @@ use PrinsFrank\PdfParser\Document\Filter\Decode\ASCIIHexDecode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\CCITTFaxDecode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\FlateDecode;
 use PrinsFrank\PdfParser\Document\Filter\Decode\LZWFlatePredictorValue;
+use PrinsFrank\PdfParser\Document\Filter\Decode\LZWDecode;
 use PrinsFrank\PdfParser\Document\Image\ImageType;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
@@ -41,6 +42,12 @@ enum FilterNameValue: string implements NameValue {
             self::JPX_DECODE,
             self::JBIG2_DECODE,
             self::DCT_DECODE => $content, // Don't decode JPEG content
+            self::LZW_DECODE => FlateDecode::applyPredictor(
+                LZWDecode::decodeBinary($content, $decodeParams?->getValueForKey(DictionaryKey::EARLY_CHANGE, IntegerValue::class)->value ?? 1),
+                LZWFlatePredictorValue::tryFrom($decodeParams?->getValueForKey(DictionaryKey::PREDICTOR, IntegerValue::class)->value ?? 1) ?? throw new ParseFailureException('Invalid LZW predictor'),
+                ($decodeParams?->getValueForKey(DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1)
+                    * ($decodeParams?->getValueForKey(DictionaryKey::COLORS, IntegerValue::class)->value ?? 1),
+            ),
             self::FLATE_DECODE => FlateDecode::decodeBinary(
                 $content,
                 $decodeParams !== null && ($predictorValue = LZWFlatePredictorValue::tryFrom((int) $decodeParams->getValueForKey(DictionaryKey::PREDICTOR, IntegerValue::class)?->value)) !== null
