@@ -102,6 +102,7 @@ class UncompressedObject implements ObjectItem {
             $this->startOffset,
             $this->endOffset,
             $dictionary->dictionary,
+            $this->getEncryptionContext(),
         );
     }
 
