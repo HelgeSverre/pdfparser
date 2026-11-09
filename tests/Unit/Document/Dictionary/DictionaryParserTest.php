@@ -35,6 +35,25 @@ use ValueError;
 
 #[CoversClass(DictionaryParser::class)]
 class DictionaryParserTest extends TestCase {
+    public function testHexadecimalStringTerminatorIsSeparateFromDictionaryTerminator(): void {
+        $stream = new InMemoryStream('<</ActualText<FEFF000900090009>>>');
+        $dictionary = DictionaryParser::parse(null, null, $stream, 0, $stream->getSizeInBytes());
+        static::assertSame("\t\t\t", $dictionary->getStringValue(DictionaryKey::ACTUAL_TEXT)?->getText());
+    }
+
+    public function testEmptyHexadecimalStringBeforeNestedDictionaryTerminators(): void {
+        $stream = new InMemoryStream('<</Properties<</ActualText<>>>>>');
+        $dictionary = DictionaryParser::parse(null, null, $stream, 0, $stream->getSizeInBytes());
+        static::assertSame('', $dictionary->getSubDictionary(DictionaryKey::PROPERTIES)?->getStringValue(DictionaryKey::ACTUAL_TEXT)?->getText());
+    }
+
+    public function testLiteralStringSyntaxDoesNotBecomeDictionarySyntax(): void {
+        $stream = new InMemoryStream('<< /ActualText (literal (nested) /Name << >> 100% \(escaped\)) /Length 12 >>');
+        $dictionary = DictionaryParser::parse(null, null, $stream, 0, $stream->getSizeInBytes());
+        static::assertSame('literal (nested) /Name << >> 100% (escaped)', $dictionary->getValueForKey(DictionaryKey::ACTUAL_TEXT, LiteralStringValue::class)?->getText());
+        static::assertSame(12, $dictionary->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)?->value);
+    }
+
     public function testNullObjectAsValueForDictionaryKeyShallBeTreatedAsOmittingTheKey(): void {
         $stream = new InMemoryStream(
             <<<EOD
