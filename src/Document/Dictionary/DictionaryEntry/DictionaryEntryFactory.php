@@ -14,7 +14,8 @@ use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\NameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValueArray;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
-use PrinsFrank\PdfParser\Document\Encryption\RC4;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
 use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
 use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
 use PrinsFrank\PdfParser\Document\Security\EncryptionContext;
@@ -33,10 +34,10 @@ class DictionaryEntryFactory {
             ?? throw new ParseFailureException();
 
         if ($encryptionContext !== null && is_string($dictionaryValue)) {
-            if (str_starts_with($dictionaryValue, '<') && str_ends_with($dictionaryValue, '>') && ($binaryValue = hex2bin(substr($dictionaryValue, 1, -1))) !== false) {
-                $dictionaryValue = '<' . bin2hex(RC4::crypt($encryptionContext->getObjectEncryptionKey(), $binaryValue)) . '>';
-            } elseif (str_starts_with($dictionaryValue, '(') && str_ends_with($dictionaryValue, ')')) {
-                $dictionaryValue = '(' . RC4::crypt($encryptionContext->getObjectEncryptionKey(), str_replace(['\\\\', '\n', '\r', '\t', '\b', '\f', '\(', '\)'], ['\\', "\n", "\r", "\t", "\x08", "\f", '(', ')'], substr($dictionaryValue, 1, -1))) . ')';
+            if (($hexadecimalString = HexadecimalStringValue::fromValue($dictionaryValue)) !== null) {
+                $dictionaryValue = '<' . bin2hex($encryptionContext->decryptString($hexadecimalString->getBinaryString())) . '>';
+            } elseif (($literalString = LiteralStringValue::fromValue($dictionaryValue)) !== null) {
+                $dictionaryValue = '(' . strtr($encryptionContext->decryptString($literalString->getBinaryString()), ['\\' => '\\\\', '(' => '\\(', ')' => '\\)']) . ')';
             }
         }
 
