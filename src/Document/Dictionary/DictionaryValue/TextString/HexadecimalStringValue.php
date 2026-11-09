@@ -8,6 +8,8 @@ use PrinsFrank\PdfParser\Document\Encoding\PDFDocEncoding;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 readonly class HexadecimalStringValue implements DictionaryValue {
+    private string $binaryString;
+
     public function __construct(
         public string $value,
     ) {}
@@ -32,6 +34,10 @@ readonly class HexadecimalStringValue implements DictionaryValue {
 
     /** @throws ParseFailureException */
     public function getBinaryString(): string {
+        if (isset($this->binaryString)) {
+            return $this->binaryString;
+        }
+
         $string = preg_replace('/[\x00\x09\x0A\x0C\x0D\x20]+/', '', $this->value)
             ?? throw new ParseFailureException();
         if (preg_match('/^[0-9A-Fa-f]*$/', $string) !== 1) {
@@ -47,7 +53,7 @@ readonly class HexadecimalStringValue implements DictionaryValue {
             throw new ParseFailureException('Invalid hex string');
         }
 
-        return $binaryValue;
+        return $this->binaryString = $binaryValue;
     }
 
     /** @return list<int> */

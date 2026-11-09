@@ -8,6 +8,8 @@ use PrinsFrank\PdfParser\Document\Encoding\PDFDocEncoding;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 readonly class LiteralStringValue implements DictionaryValue {
+    private string $binaryString;
+
     public function __construct(
         public string $value,
     ) {}
@@ -32,6 +34,10 @@ readonly class LiteralStringValue implements DictionaryValue {
 
     /** @throws ParseFailureException */
     public function getBinaryString(): string {
+        if (isset($this->binaryString)) {
+            return $this->binaryString;
+        }
+
         $value = preg_replace(
             '/(?<!\\\\)((?:\\\\\\\\)*)\\\\(?:\r\n|\r|\n)/',
             '$1',
@@ -44,7 +50,7 @@ readonly class LiteralStringValue implements DictionaryValue {
             $value,
         ) ?? throw new ParseFailureException();
 
-        return str_replace(
+        return $this->binaryString = str_replace(
             ['\\\\', '\n', '\r', '\t', '\b', '\f', '\(', '\)'],
             ['\\', "\n", "\r", "\t", "\x08", "\f", '(', ')'],
             $value,
