@@ -24,6 +24,34 @@ use Random\Randomizer;
 #[CoversClass(TextGrouping::class)]
 #[CoversClass(TextBoundsIndex::class)]
 class OrientedTextBlocksTest extends TestCase {
+    public function testCollapsedFirstElementDoesNotMoveRightColumnFooter(): void {
+        $elements = [];
+        $expected = [];
+        for ($i = 0; $i < 30; $i++) {
+            $elements[] = self::element('L' . $i, 0, 700 - $i * 20, 100);
+            $elements[] = self::element('R' . $i, 400, 700 - $i * 20, 100);
+            $expected[] = 'L' . $i;
+        }
+        for ($i = 0; $i < 30; $i++) {
+            $expected[] = 'R' . $i;
+        }
+        $expected[] = 'footer';
+        $elements[] = new PositionedTextElement([new TextSegment(new LiteralStringValue(''), -10000)], new TransformationMatrix(0, 1, -1, 0, 450, 90), new TextState(new NameObjectStringValue('F1'), 10), actualText: 'footer');
+        $collapsed = new PositionedTextElement([new TextSegment(new LiteralStringValue(''), -10000)], new TransformationMatrix(0, 0, 0, 1, 0, 900), new TextState(new NameObjectStringValue('F1'), 10), actualText: '');
+        $page = new Page(new Dictionary(null));
+        foreach ([$elements, [$collapsed, ...$elements]] as $input) {
+            $fonts = ['F1' => new Font(new Dictionary(null))];
+            $result = [];
+            foreach (TextGrouping::group($input, $page, $fonts) as $line) {
+                foreach ($line as $element) {
+                    if ($element->actualText !== '') {
+                        $result[] = $element->actualText;
+                    }
+                }
+            }
+            static::assertSame($expected, $result);
+        }
+    }
 
     public function testSpatialGroupingMatchesFrozenAllPairsReference(): void {
         $random = new Randomizer(new Mt19937(72813));

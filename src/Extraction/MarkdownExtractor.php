@@ -70,7 +70,7 @@ class MarkdownExtractor {
                 }
 
                 $linkUrl = self::getLinkForElement($positionedTextElement, $linkAnnotations);
-                $currentHeadingLevel = $font->getHeadingLevel($positionedTextElement->textState, $positionedTextElement->absoluteMatrix);
+                $currentHeadingLevel = $font->getHeadingLevel($positionedTextElement->textState, $positionedTextElement->getLayoutMatrix());
                 if ($previousHeadingLevel !== $currentHeadingLevel) {
                     self::flushInLineNodes($inLineNodes, $textBuffer, $previousElementIsBold, $previousElementIsItalic, $previousLinkUrl);
                     self::flushBlockNodes($blockNodes, $inLineNodes, $previousHeadingLevel);
