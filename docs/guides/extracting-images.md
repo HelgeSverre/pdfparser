@@ -12,3 +12,5 @@ foreach ($document->getImages() as $index => $image) {
     file_put_contents(sprintf('%s/image_%d.%s', __DIR__, $index, $imageFileExtension), $image->getContent()->toString());
 }
 ```
+
+Images compressed with LZWDecode or FlateDecode are exported as PNG files. Their stream filters and predictors are decoded before the pixel data is converted.
