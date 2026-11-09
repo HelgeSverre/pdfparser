@@ -14,24 +14,8 @@ modificationDate: null
 pages:
   -
     text: |-
-      W
       Hello world
-      A
-      T
-      E
-      R
-      M
-      A
-      R
-      K
+      WATERMARK
     markdown: |-
-      W
       Hello world
-      A
-      T
-      E
-      R
-      M
-      A
-      R
-      K
+      # WATERMARK

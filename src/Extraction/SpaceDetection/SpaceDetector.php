@@ -11,13 +11,13 @@ class SpaceDetector {
         PositionedTextElement $previousTextElementOnLine,
         Font $previousFontOnLine,
     ): bool {
-        $gap = $positionedTextElement->absoluteMatrix->offsetX
-            - $previousTextElementOnLine->absoluteMatrix->offsetX
+        $gap = $positionedTextElement->getLayoutMatrix()->offsetX
+            - $previousTextElementOnLine->getLayoutMatrix()->offsetX
             - $previousTextElementOnLine->getAdvanceWidth($previousFontOnLine);
 
-        $wordBreakThreshold = $previousTextElementOnLine->textState->getFontSize()
-            * $previousTextElementOnLine->absoluteMatrix->scaleX
-            * ($previousTextElementOnLine->textState->scale / 100)
+        $wordBreakThreshold = abs($previousTextElementOnLine->textState->getFontSize())
+            * $previousTextElementOnLine->getLayoutMatrix()->scaleX
+            * (abs($previousTextElementOnLine->textState->scale) / 100)
             * PositionedTextElement::WORD_BREAK_THRESHOLD_EM;
 
         return $gap >= $wordBreakThreshold;
