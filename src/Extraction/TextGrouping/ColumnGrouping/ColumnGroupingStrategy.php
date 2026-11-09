@@ -36,7 +36,7 @@ class ColumnGroupingStrategy {
     public static function group(array $positionedTextElements, Page $page, array &$fontCache): array {
         $visibleElements = array_filter(
             $positionedTextElements,
-            static fn(PositionedTextElement $e) => $e->getHeight() > 0 && $e->getRight($page, $fontCache) > $e->absoluteMatrix->offsetX,
+            static fn(PositionedTextElement $e) => $e->getHeight() > 0 && $e->getLayoutRight($page, $fontCache) > $e->getLayoutMatrix()->offsetX,
         );
 
         if ($visibleElements === []) {
@@ -44,13 +44,13 @@ class ColumnGroupingStrategy {
         }
         $pageLeft = min(
             $elementsLeft = array_map(
-                static fn(PositionedTextElement $e) => floor($e->absoluteMatrix->offsetX / self::MINIMUM_GUTTER_WIDTH) * self::MINIMUM_GUTTER_WIDTH,
+                static fn(PositionedTextElement $e) => floor($e->getLayoutMatrix()->offsetX / self::MINIMUM_GUTTER_WIDTH) * self::MINIMUM_GUTTER_WIDTH,
                 $visibleElements,
             ),
         );
         $pageRight = max(
             $elementsRight = array_map(
-                static fn(PositionedTextElement $e) => ceil($e->getRight($page, $fontCache) / self::MINIMUM_GUTTER_WIDTH) * self::MINIMUM_GUTTER_WIDTH,
+                static fn(PositionedTextElement $e) => ceil($e->getLayoutRight($page, $fontCache) / self::MINIMUM_GUTTER_WIDTH) * self::MINIMUM_GUTTER_WIDTH,
                 $visibleElements,
             ),
         );
@@ -124,8 +124,8 @@ class ColumnGroupingStrategy {
         $columns = [];
         foreach (array_slice($positionedElementsGroupedByLine, $indexFirstColumnStart, $indexLastColumnEnd - $indexFirstColumnStart) as $positionedElementsLineInColumn) {
             foreach ($positionedElementsLineInColumn as $positionedTextElement) {
-                $elementLeft = $positionedTextElement->absoluteMatrix->offsetX;
-                $elementRight = $positionedTextElement->getRight($page, $fontCache);
+                $elementLeft = $positionedTextElement->getLayoutMatrix()->offsetX;
+                $elementRight = $positionedTextElement->getLayoutRight($page, $fontCache);
                 $elementCenter = ($elementLeft + $elementRight) / 2;
                 $columnIndex = count($xGutters);
                 foreach (array_values($xGutters) as $xGutterIndex => $xGutter) {
@@ -157,8 +157,8 @@ class ColumnGroupingStrategy {
      */
     private static function elementOnLineCrossesX(array $positionedTextElementsOnLine, float $x, Page $page, array &$fontCache): bool {
         foreach ($positionedTextElementsOnLine as $positionedTextElementOnLine) {
-            if ($positionedTextElementOnLine->absoluteMatrix->offsetX < $x
-                && $positionedTextElementOnLine->getRight($page, $fontCache) > $x) {
+            if ($positionedTextElementOnLine->getLayoutMatrix()->offsetX < $x
+                && $positionedTextElementOnLine->getLayoutRight($page, $fontCache) > $x) {
                 return true;
             }
         }
