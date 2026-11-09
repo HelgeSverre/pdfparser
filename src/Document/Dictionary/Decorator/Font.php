@@ -383,7 +383,7 @@ readonly class Font extends DecoratedDictionary {
     }
 
     public function getHeadingLevel(TextState $textState, TransformationMatrix $transformationMatrix): ?HeadingLevel {
-        $effectiveFontSize = $textState->getFontSize() * $transformationMatrix->scaleX;
+        $effectiveFontSize = abs($textState->getFontSize()) * $transformationMatrix->scaleX;
 
         return match (true) {
             $effectiveFontSize >= 30 => HeadingLevel::Level1,
