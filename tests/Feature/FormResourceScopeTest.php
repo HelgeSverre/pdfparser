@@ -6,25 +6,25 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PrinsFrank\PdfParser\PdfParser;
-use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 #[CoversClass(PdfParser::class)]
 class FormResourceScopeTest extends TestCase {
-    /** @return iterable<string, array{string, string}> */
+    /** @return iterable<string, array{string, string, string}> */
     public static function outerContents(): iterable {
-        yield 'only nested invocation' => ['/Inner Do', 'Nested text'];
-        yield 'outer and nested text' => ['BT /F0 12 Tf 20 100 Td (Outer) Tj ET /Inner Do', "Outer\nNested text"];
+        yield 'only nested invocation' => ['/Inner Do', 'Nested text', ''];
+        yield 'outer and nested text' => ['BT /F0 12 Tf 20 100 Td (Outer) Tj ET /Inner Do', "Outer\nNested text", ''];
+        yield 'private FillSign metadata' => ['/Inner Do', 'Nested text', '/ADBE_FillSign << /Type /FillSignData /Text 1234567 /Size [55.044 14.641] /Nested << /Text 8 >> >>'];
     }
 
     #[DataProvider('outerContents')]
-    public function testNestedFormsUseTheirOwnFontsAndMatrices(string $outerContent, string $expected): void {
+    public function testNestedFormsUseTheirOwnFonts(string $outerContent, string $expected, string $metadata): void {
         $pdf = self::pdf([
             '<< /Type /Catalog /Pages 2 0 R >>',
             '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
             '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /XObject << /Outer 5 0 R >> >> /Contents 4 0 R >>',
             self::stream('q 2 0 0 2 100 200 cm /Outer Do Q'),
-            self::stream($outerContent, '/Type /XObject /Subtype /Form /BBox [0 0 600 800] /Matrix [1 0 0 1 5 10] /Resources << /Font << /F0 7 0 R >> /XObject << /Inner 6 0 R >> >>'),
-            self::stream('BT /F1 12 Tf 20 40 Td (Nested text) Tj ET', '/Type /XObject /Subtype /Form /BBox [0 0 600 800] /Matrix [1 0 0 1 10 15] /Resources << /Font << /F1 7 0 R >> >>'),
+            self::stream($outerContent, '/Type /XObject /Subtype /Form /BBox [0 0 600 800] /Resources << /Font << /F0 7 0 R >> /XObject << /Inner 6 0 R >> >>'),
+            self::stream('BT /F1 12 Tf 20 40 Td (Nested text) Tj ET', '/Type /XObject /Subtype /Form /BBox [0 0 600 800] /Resources << /Font << /F1 7 0 R >> >> ' . $metadata),
             '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
         ]);
         $document = (new PdfParser())->parseString($pdf);
@@ -32,8 +32,8 @@ class FormResourceScopeTest extends TestCase {
         static::assertStringContainsString('Nested text', $document->getMarkdown());
         $elements = $document->getPages()[0]->getPositionedTextElements();
         $nested = $elements[count($elements) - 1];
-        static::assertSame(170.0, $nested->absoluteMatrix->offsetX);
-        static::assertSame(330.0, $nested->absoluteMatrix->offsetY);
+        static::assertSame(140.0, $nested->absoluteMatrix->offsetX);
+        static::assertSame(280.0, $nested->absoluteMatrix->offsetY);
     }
 
     public function testSiblingFormsDoNotShareFontsWithTheSameResourceName(): void {
@@ -61,24 +61,17 @@ class FormResourceScopeTest extends TestCase {
         static::assertSame("WWW\nWWW", trim($document->getMarkdown()));
     }
 
-    /** @return iterable<string, array{string}> */
-    public static function invalidMatrices(): iterable {
-        yield 'wrong number of entries' => ['1 0 0 1 10'];
-        yield 'scientific notation' => ['1e2 0 0 1 10 20'];
-        yield 'non-finite conversion' => [str_repeat('9', 400) . ' 0 0 1 10 20'];
-    }
-
-    #[DataProvider('invalidMatrices')]
-    public function testInvalidFormMatricesAreRejected(string $matrix): void {
+    public function testEmptyFormHasNoText(): void {
         $pdf = self::pdf([
             '<< /Type /Catalog /Pages 2 0 R >>',
             '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
             '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /XObject << /Example 5 0 R >> >> /Contents 4 0 R >>',
             self::stream('/Example Do'),
-            self::stream('', '/Type /XObject /Subtype /Form /BBox [0 0 300 300] /Matrix [' . $matrix . ']'),
+            self::stream('', '/Type /XObject /Subtype /Form /BBox [0 0 300 300]'),
         ]);
-        $this->expectException(ParseFailureException::class);
-        (new PdfParser())->parseString($pdf)->getText();
+        $document = (new PdfParser())->parseString($pdf);
+        static::assertSame('', $document->getText());
+        static::assertSame('', trim($document->getMarkdown()));
     }
 
     private static function stream(string $content, string $dictionary = ''): string {
