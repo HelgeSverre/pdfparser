@@ -10,6 +10,8 @@ use PrinsFrank\PdfParser\Document\Dictionary\DictionaryFactory;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParser;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\ArrayValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\DictionaryValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Float\FloatValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
@@ -26,7 +28,10 @@ class PrivateDictionaryContextTest extends TestCase {
         static::assertSame('standard', $dictionary->getValueForKey(DictionaryKey::TEXT, LiteralStringValue::class)?->value);
         $private = $dictionary->getValueForKey(new NameObjectStringValue('ADBE_FillSign'), Dictionary::class);
         static::assertNotNull($private);
-        static::assertSame(1234567, $private->getValueForKey(new NameObjectStringValue('Text'), IntegerValue::class)?->value);
+        static::assertContainsEquals(
+            $private->getValueForKey(new NameObjectStringValue('Text'), DictionaryValue::class),
+            [new IntegerValue(1234567), new FloatValue(1234567.0)],
+        );
         static::assertSame(['55.044', '14.641'], $private->getValueForKey(new NameObjectStringValue('Size'), ArrayValue::class)?->value);
         $nested = $private->getValueForKey(new NameObjectStringValue('Nested'), Dictionary::class);
         static::assertSame('private', $nested?->getValueForKey(new NameObjectStringValue('Text'), LiteralStringValue::class)?->value);
