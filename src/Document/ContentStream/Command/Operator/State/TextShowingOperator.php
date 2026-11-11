@@ -124,11 +124,11 @@ enum TextShowingOperator: string implements InteractsWithTextState, ProducesPosi
                 );
             } else {
                 $last = array_pop($segments);
-                $advance = ($last?->offset ?? 0) + (float) $match['number'];
+                $advance = ($last->offset ?? 0) + (float) $match['number'];
                 if (!is_finite($advance)) {
                     throw new ParseFailureException('TJ adjustment exceeds the supported numeric range');
                 }
-                $segments[] = new TextSegment($last?->textString ?? new LiteralStringValue(''), $advance);
+                $segments[] = new TextSegment($last->textString ?? new LiteralStringValue(''), $advance);
             }
         }
 

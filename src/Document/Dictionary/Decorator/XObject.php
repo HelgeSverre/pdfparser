@@ -172,10 +172,14 @@ readonly class XObject extends DecoratedDictionary {
                 throw new ParseFailureException('A form matrix must contain six numbers');
             }
             $values = array_map(static function ($value): float {
-                if (preg_match('/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/D', (string) $value) !== 1 || !is_finite((float) $value)) {
+                if (!is_int($value) && (!is_string($value) || preg_match('/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/D', $value) !== 1)) {
                     throw new ParseFailureException('Invalid form matrix number');
                 }
-                return (float) $value;
+                $number = (float) $value;
+                if (!is_finite($number)) {
+                    throw new ParseFailureException('Form matrix number exceeds the supported numeric range');
+                }
+                return $number;
             }, $matrix->value);
             $transformationMatrix = (new TransformationMatrix(...$values))->multiplyWith($transformationMatrix);
         }
